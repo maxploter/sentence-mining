@@ -22,30 +22,36 @@ def main():
         print("No tasks found in Todoist. Exiting.")
         return
 
-    print(f"Found {len(tasks)} tasks to process.")
-
-    # 3. Process each task
+    # Pre-process tasks to gather all words for distractor generation
+    all_words = []
+    processed_tasks = []
     for task in tasks:
         word = todoist_service.parse_task_word(task.content)
         context = task.description
 
         if not word:
             if context:
-                # Assume the first line of the description is the word/phrase
                 lines = context.split('\n')
                 word = lines[0].strip()
-                # The rest of the description can be the context
                 if len(lines) > 1:
                     context = '\n'.join(lines[1:]).strip()
                 else:
-                    context = "" # No more context
+                    context = ""
             else:
-                print(f"Task '{task.content}' has no word in title and no description. Skipping.")
+                print(f"Task '{task.content}' has no word in title or description. Skipping.")
                 continue
+        
+        if word:
+            all_words.append(word)
+            processed_tasks.append({'task': task, 'word': word, 'context': context})
 
-        if not word:
-            print(f"Could not find a word for task '{task.content}'. Skipping.")
-            continue
+    print(f"Found {len(processed_tasks)} tasks to process.")
+
+    # 3. Process each pre-processed task
+    for item in processed_tasks:
+        task = item['task']
+        word = item['word']
+        context = item['context']
 
         print(f"Processing word: {word}")
 
@@ -64,7 +70,7 @@ def main():
         print(f"Generated sentences for {word}.")
 
         # 6. Add note to Anki
-        anki_service.add_note(word, definition, sentences, context)
+        anki_service.add_note(word, definition, sentences, context, all_words)
         print(f"Added note for {word} to Anki deck.")
 
         # 7. Complete the task in Todoist (optional, uncomment to enable)

@@ -4,6 +4,10 @@ import re
 import requests
 import datetime
 
+class AnkiConnectError(Exception):
+    """Custom exception for AnkiConnect errors."""
+    pass
+
 # ---------------------------
 # AnkiConnect helpers
 # ---------------------------
@@ -14,7 +18,8 @@ def get_current_deck_name():
 
 def _ac_request(action, params=None, timeout=10):
     """
-    Performs a request to AnkiConnect. Returns the 'result' on success, None on failure.
+    Performs a request to AnkiConnect. Returns the 'result' on success.
+    Raises AnkiConnectError on failure.
     """
     try:
         payload = {
@@ -26,11 +31,10 @@ def _ac_request(action, params=None, timeout=10):
         resp.raise_for_status()
         data = resp.json()
         if data.get("error") is not None:
-            raise RuntimeError(f"AnkiConnect error ({action}): {data.get('error')}")
+            raise AnkiConnectError(data['error'])
         return data.get("result")
-    except Exception as e:
-        print(f"AnkiConnect request failed for action '{action}': {e}")
-        return None
+    except requests.exceptions.RequestException as e:
+        raise AnkiConnectError(f"Network error communicating with AnkiConnect: {e}")
 
 
 def _ensure_deck(deck_name: str):
@@ -117,19 +121,34 @@ def _ensure_models():
             "isCloze": True,
             "cardTemplates": [
                 {
-                    "Name": "Sentence Gap -> Word",
+                    "Name": "Sentence 1 (Cloze)",
                     "Front": "{{cloze:Sentence1}}",
                     "Back": "{{cloze:Sentence1}}<br><br>{{Word}}<br><br>{{Context}}",
                 },
                 {
-                    "Name": "Sentence Gap (Multiple Choice) -> Word",
+                    "Name": "Sentence 1 (Multiple Choice)",
+                    "Front": "{{cloze:Sentence1}}<br><br>{{Options}}",
+                    "Back": "{{cloze:Sentence1}}<br><br>{{Options}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
+                },
+                {
+                    "Name": "Sentence 2 (Cloze)",
+                    "Front": "{{cloze:Sentence2}}",
+                    "Back": "{{cloze:Sentence2}}<br><br>{{Word}}<br><br>{{Context}}",
+                },
+                {
+                    "Name": "Sentence 2 (Multiple Choice)",
                     "Front": "{{cloze:Sentence2}}<br><br>{{Options}}",
                     "Back": "{{cloze:Sentence2}}<br><br>{{Options}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
                 },
                 {
-                    "Name": "Sentence Gap 3 -> Word",
+                    "Name": "Sentence 3 (Cloze)",
                     "Front": "{{cloze:Sentence3}}",
                     "Back": "{{cloze:Sentence3}}<br><br>{{Word}}<br><br>{{Context}}",
+                },
+                {
+                    "Name": "Sentence 3 (Multiple Choice)",
+                    "Front": "{{cloze:Sentence3}}<br><br>{{Options}}",
+                    "Back": "{{cloze:Sentence3}}<br><br>{{Options}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
                 },
             ],
         }
@@ -140,11 +159,13 @@ def initialize_anki():
     """
     Checks connection to AnkiConnect and ensures deck and models exist.
     """
-    if _ac_request("version") is None:
+    try:
+        _ac_request("version")
+        deck_name = get_current_deck_name()
+        _ensure_deck(deck_name)
+        _ensure_models()
+    except AnkiConnectError:
         raise ConnectionError("AnkiConnect is not available. Please ensure Anki is running with AnkiConnect.")
-    deck_name = get_current_deck_name()
-    _ensure_deck(deck_name)
-    _ensure_models()
 
 
 def _remove_cloze_syntax(text):
@@ -153,7 +174,33 @@ def _remove_cloze_syntax(text):
         return ""
     return re.sub(r'\{\{c\d+::(.*?)\}\}', r'\1', text)
 
-def add_note(word, definition, sentences, context):
+
+def _handle_duplicate(word):
+    """Finds a note by word and resets its learning progress."""
+    deck_name = get_current_deck_name()
+    query = f'"deck:{deck_name}" "Word:{word}"'
+    try:
+        note_ids = _ac_request("findNotes", {"query": query})
+        if not note_ids:
+            print(f"Could not find duplicate note for word '{word}' to forget.")
+            return
+
+        print(f"Found {len(note_ids)} duplicate notes for '{word}'.")
+
+        notes_info = _ac_request("notesInfo", {"notes": note_ids})
+        card_ids = []
+        for note_info in notes_info:
+            card_ids.extend(note_info['cards'])
+        
+        if card_ids:
+            _ac_request("forgetCards", {"cards": card_ids})
+            print(f"Reset learning progress for {len(card_ids)} cards of word '{word}'.")
+
+    except AnkiConnectError as e:
+        print(f"Error handling duplicate for '{word}': {e}")
+
+
+def add_note(word, definition, sentences, context, all_words=None):
     """Adds a note either directly to Anki (AnkiConnect) or to the local genanki deck."""
 
     # For cloze deletion, replace the word with {{c1::word}}
@@ -174,8 +221,19 @@ def add_note(word, definition, sentences, context):
 
         cloze_sentences.append(cloze_sentence)
 
-    # Placeholder for multiple choice options
-    distractors = ['option2', 'option3']
+    # Generate distractors for multiple choice
+    distractors = []
+    if all_words and len(all_words) > 1:
+        potential_distractors = [w for w in all_words if w.lower() != word.lower()]
+        num_to_sample = min(2, len(potential_distractors))
+        if num_to_sample > 0:
+            distractors = random.sample(potential_distractors, num_to_sample)
+
+    # Fallback to placeholder distractors if not enough were found
+    placeholders = ['option2', 'option3']
+    for i in range(2 - len(distractors)):
+        distractors.append(placeholders[i])
+
     options_list = [word] + distractors
     random.shuffle(options_list)
     options = f"({', '.join(options_list)})"
@@ -228,19 +286,25 @@ def add_note(word, definition, sentences, context):
         }
     }
 
-    # Try Basic then Cloze; only fall back if both fail
-    basic_id = _ac_request("addNote", {"note": basic_note}, timeout=5)
-    if basic_id:
+    # Try to add the basic note
+    try:
+        _ac_request("addNote", {"note": basic_note}, timeout=5)
         print(f"Added Basic note for '{word}' directly to Anki.")
-    else:
-        print(f"Failed to add Basic note via AnkiConnect for '{word}'.")
+    except AnkiConnectError as e:
+        if "duplicate" in str(e):
+            print(f"Note for '{word}' already exists. Resetting learning progress.")
+            _handle_duplicate(clean_word)
+        else:
+            print(f"Failed to add Basic note for '{word}': {e}")
 
-    cloze_id = _ac_request("addNote", {"note": cloze_note}, timeout=5)
-    if cloze_id:
+    # Try to add the cloze note
+    try:
+        _ac_request("addNote", {"note": cloze_note}, timeout=5)
         print(f"Added Cloze note for '{word}' directly to Anki.")
-    else:
-        print(f"Failed to add Cloze note via AnkiConnect for '{word}'.")
-
-    # Avoid creating local duplicates if at least one note was added
-    if basic_id or cloze_id:
-        return
+    except AnkiConnectError as e:
+        if "duplicate" in str(e):
+            # The duplicate handler would have already been called for the basic note,
+            # so we can just log this or do nothing.
+            pass
+        else:
+            print(f"Failed to add Cloze note for '{word}': {e}")
