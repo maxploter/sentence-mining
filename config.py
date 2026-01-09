@@ -17,6 +17,4 @@ ANKI_MODEL_NAME_BASIC = os.getenv("ANKI_MODEL_NAME_BASIC", f"{ANKI_MODEL_NAME} (
 ANKI_MODEL_NAME_CLOZE = os.getenv("ANKI_MODEL_NAME_CLOZE", f"{ANKI_MODEL_NAME} (Cloze)")
 
 # AnkiConnect integration
-# Enable to add notes directly to Anki via the AnkiConnect add-on.
-USE_ANKICONNECT = os.getenv("ANKICONNECT_ENABLE", "false").strip().lower() in ("1", "true", "yes", "on")
 ANKICONNECT_URL = os.getenv("ANKICONNECT_URL", "http://localhost:8765")

@@ -1,6 +1,5 @@
 todoist-api-python
 openai>=1.0.0,<2.0.0
-genanki
 python-dotenv
 tenacity
 requests>=2.25.0,<3.0.0

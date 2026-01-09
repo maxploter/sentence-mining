@@ -9,9 +9,12 @@ def main():
     """
     print("Starting sentence mining process...")
 
-    # 1. Initialize Anki deck
-    anki_model = anki_service.create_anki_model()
-    anki_deck = anki_service.create_anki_deck(anki_model)
+    # 1. Initialize Anki service
+    try:
+        anki_service.initialize_anki()
+    except ConnectionError as e:
+        print(e)
+        return
 
     # 2. Fetch tasks from Todoist
     tasks = todoist_service.get_tasks()
@@ -41,16 +44,13 @@ def main():
             continue
         print(f"Generated sentences for {word}.")
 
-        # 6. Add note to Anki deck
-        anki_service.add_note(anki_deck, anki_model, word, definition, sentences, context)
+        # 6. Add note to Anki
+        anki_service.add_note(word, definition, sentences, context)
         print(f"Added note for {word} to Anki deck.")
 
         # 7. Complete the task in Todoist (optional, uncomment to enable)
         # todoist_service.complete_task(task.id)
         # print(f"Completed task for {word} in Todoist.")
-
-    # 8. Save the Anki deck
-    anki_service.save_deck(anki_deck)
 
     print("Sentence mining process finished.")
 
