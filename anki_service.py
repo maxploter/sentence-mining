@@ -152,9 +152,20 @@ def add_note(word, definition, sentences, context):
 
     # For cloze deletion, replace the word with {{c1::word}}
     cloze_sentences = []
-    for i, sentence in enumerate(sentences):
-        # Use re.sub for case-insensitive replacement
-        cloze_sentence = re.sub(f'({re.escape(word)})', r'{{c1::\1}}', sentence, flags=re.IGNORECASE)
+    for sentence in sentences:
+        # Normalize hyphens for both word and sentence to ensure matching
+        normalized_word = word.replace('‑', '-').replace('—', '-')
+        normalized_sentence = sentence.replace('‑', '-').replace('—', '-')
+
+        # First, try to replace the word if it's formatted as bold markdown
+        pattern_bold = f'\\*\\*({re.escape(normalized_word)})\\*\\*'
+        cloze_sentence, count = re.subn(pattern_bold, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+
+        # If no bolded version was found, try replacing the plain word
+        if count == 0:
+            pattern_plain = f'({re.escape(normalized_word)})'
+            cloze_sentence, _ = re.subn(pattern_plain, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+
         cloze_sentences.append(cloze_sentence)
 
     # Placeholder for multiple choice options
