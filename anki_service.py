@@ -147,6 +147,12 @@ def initialize_anki():
     _ensure_models()
 
 
+def _remove_cloze_syntax(text):
+    """Removes Anki cloze deletion syntax (e.g., {{c1::word}}) from a string."""
+    if not text:
+        return ""
+    return re.sub(r'\{\{c\d+::(.*?)\}\}', r'\1', text)
+
 def add_note(word, definition, sentences, context):
     """Adds a note either directly to Anki (AnkiConnect) or to the local genanki deck."""
 
@@ -174,6 +180,10 @@ def add_note(word, definition, sentences, context):
     random.shuffle(options_list)
     options = f"({', '.join(options_list)})"
 
+    # Clean the word and context from any accidental cloze syntax before using in non-cloze fields
+    clean_word = _remove_cloze_syntax(word)
+    clean_context = _remove_cloze_syntax(context)
+
     deck_name = get_current_deck_name()
     basic_model = getattr(config, "ANKI_MODEL_NAME_BASIC", f"{config.ANKI_MODEL_NAME} (Basic)")
     cloze_model = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
@@ -182,9 +192,9 @@ def add_note(word, definition, sentences, context):
         "deckName": deck_name,
         "modelName": basic_model,
         "fields": {
-            "Word": word,
+            "Word": clean_word,
             "Definition": definition,
-            "Context": context or "",
+            "Context": clean_context or "",
         },
         "options": {
             "allowDuplicate": False,
@@ -200,11 +210,11 @@ def add_note(word, definition, sentences, context):
         "deckName": deck_name,
         "modelName": cloze_model,
         "fields": {
-            "Word": word,
+            "Word": clean_word,
             "Sentence1": cloze_sentences[0] if len(cloze_sentences) > 0 else '',
             "Sentence2": cloze_sentences[1] if len(cloze_sentences) > 1 else '',
             "Sentence3": cloze_sentences[2] if len(cloze_sentences) > 2 else '',
-            "Context": context or "",
+            "Context": clean_context or "",
             "Options": options,
         },
         "options": {
