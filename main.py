@@ -28,6 +28,25 @@ def main():
     for task in tasks:
         word = todoist_service.parse_task_word(task.content)
         context = task.description
+
+        if not word:
+            if context:
+                # Assume the first line of the description is the word/phrase
+                lines = context.split('\n')
+                word = lines[0].strip()
+                # The rest of the description can be the context
+                if len(lines) > 1:
+                    context = '\n'.join(lines[1:]).strip()
+                else:
+                    context = "" # No more context
+            else:
+                print(f"Task '{task.content}' has no word in title and no description. Skipping.")
+                continue
+
+        if not word:
+            print(f"Could not find a word for task '{task.content}'. Skipping.")
+            continue
+
         print(f"Processing word: {word}")
 
         # 4. Get definition from LLM
