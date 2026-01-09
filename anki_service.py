@@ -2,10 +2,15 @@ import config
 import random
 import re
 import requests
+import datetime
 
 # ---------------------------
 # AnkiConnect helpers
 # ---------------------------
+
+def get_current_deck_name():
+    now = datetime.datetime.now()
+    return f"{config.ANKI_DECK_NAME}::{now.year}-{now.month:02}"
 
 def _ac_request(action, params=None, timeout=10):
     """
@@ -137,7 +142,8 @@ def initialize_anki():
     """
     if _ac_request("version") is None:
         raise ConnectionError("AnkiConnect is not available. Please ensure Anki is running with AnkiConnect.")
-    _ensure_deck(config.ANKI_DECK_NAME)
+    deck_name = get_current_deck_name()
+    _ensure_deck(deck_name)
     _ensure_models()
 
 
@@ -157,11 +163,12 @@ def add_note(word, definition, sentences, context):
     random.shuffle(options_list)
     options = f"({', '.join(options_list)})"
 
+    deck_name = get_current_deck_name()
     basic_model = getattr(config, "ANKI_MODEL_NAME_BASIC", f"{config.ANKI_MODEL_NAME} (Basic)")
     cloze_model = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
 
     basic_note = {
-        "deckName": config.ANKI_DECK_NAME,
+        "deckName": deck_name,
         "modelName": basic_model,
         "fields": {
             "Word": word,
@@ -172,14 +179,14 @@ def add_note(word, definition, sentences, context):
             "allowDuplicate": False,
             "duplicateScope": "deck",
             "duplicateScopeOptions": {
-                "deckName": config.ANKI_DECK_NAME,
+                "deckName": deck_name,
                 "checkChildren": True,
                 "checkAllModels": False
             }
         }
     }
     cloze_note = {
-        "deckName": config.ANKI_DECK_NAME,
+        "deckName": deck_name,
         "modelName": cloze_model,
         "fields": {
             "Word": word,
@@ -193,7 +200,7 @@ def add_note(word, definition, sentences, context):
             "allowDuplicate": False,
             "duplicateScope": "deck",
             "duplicateScopeOptions": {
-                "deckName": config.ANKI_DECK_NAME,
+                "deckName": deck_name,
                 "checkChildren": True,
                 "checkAllModels": False
             }

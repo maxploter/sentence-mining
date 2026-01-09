@@ -9,7 +9,7 @@ NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY")
 
 # Configuration (can be changed here)
 TODOIST_PROJECT_NAME = "english-words"
-ANKI_DECK_NAME = "English Vocabulary Request"
+ANKI_DECK_NAME = "english::sentence-mining"
 ANKI_MODEL_NAME = "English Vocabulary Model"
 
 # Derived model names for AnkiConnect mode (you can override with env if desired)
