@@ -31,22 +31,25 @@ def get_tasks():
 def parse_task_word(task_content):
     """
     Parses the task content to extract the word to be learned.
-    Handles formats: 'English {word}', '{word}', 'english {word}'.
+    Handles various formats like:
+    - 'English: {word}', 'english: word'
+    - 'English {word}', 'english word'
+    - '{word}', 'word'
     """
-    # Case-insensitive removal of "english" prefix, then extract from braces or take the whole string
-    match = re.match(r'(?i)english\s*{(.*)}', task_content)
-    if match:
-        return match.group(1).strip()
-    
-    match = re.match(r'{(.*)}', task_content)
-    if match:
-        return match.group(1).strip()
+    content = task_content.strip()
 
-    # If no braces, assume the whole content is the word, after cleaning up "english"
-    if task_content.lower().startswith('english '):
-        return task_content[len('english '):].strip()
+    # Case-insensitively remove "english:" or "english" prefix
+    match = re.match(r'(?i)english\s*:?\s*', content)
+    if match:
+        # Get the part after the prefix
+        content = content[match.end():].strip()
 
-    return task_content.strip()
+    # Now, check for braces '{word}'
+    if content.startswith('{') and content.endswith('}'):
+        return content[1:-1].strip()
+
+    # Otherwise, the remaining content is the word
+    return content
 
 
 def complete_task(task_id):
