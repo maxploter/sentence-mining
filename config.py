@@ -18,3 +18,8 @@ ANKI_MODEL_NAME_CLOZE = os.getenv("ANKI_MODEL_NAME_CLOZE", f"{ANKI_MODEL_NAME} (
 
 # AnkiConnect integration
 ANKICONNECT_URL = os.getenv("ANKICONNECT_URL", "http://localhost:8765")
+
+# AnkiConnect retry settings
+ANKICONNECT_TIMEOUT = int(os.getenv("ANKICONNECT_TIMEOUT", "20"))
+ANKICONNECT_MAX_RETRIES = int(os.getenv("ANKICONNECT_MAX_RETRIES", "3"))
+ANKICONNECT_RETRY_DELAY = int(os.getenv("ANKICONNECT_RETRY_DELAY", "3"))

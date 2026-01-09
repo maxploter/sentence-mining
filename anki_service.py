@@ -3,6 +3,7 @@ import random
 import re
 import requests
 import datetime
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception
 
 class AnkiConnectError(Exception):
     """Custom exception for AnkiConnect errors."""
@@ -16,11 +17,25 @@ def get_current_deck_name():
     now = datetime.datetime.now()
     return f"{config.ANKI_DECK_NAME}::{now.year}-{now.month:02}"
 
-def _ac_request(action, params=None, timeout=10):
+def is_retryable(exception):
+    """Return True if we should retry on a timeout or network error."""
+    error_str = str(exception).lower()
+    return "timeout" in error_str or "network error" in error_str
+
+@retry(
+    stop=stop_after_attempt(config.ANKICONNECT_MAX_RETRIES),
+    wait=wait_fixed(config.ANKICONNECT_RETRY_DELAY),
+    retry=retry_if_exception(is_retryable),
+    reraise=True
+)
+def _ac_request(action, params=None, timeout=None):
     """
     Performs a request to AnkiConnect. Returns the 'result' on success.
-    Raises AnkiConnectError on failure.
+    Raises AnkiConnectError on failure. Retries on timeout or network errors.
     """
+    if timeout is None:
+        timeout = config.ANKICONNECT_TIMEOUT
+    
     try:
         payload = {
             "action": action,
@@ -33,6 +48,8 @@ def _ac_request(action, params=None, timeout=10):
         if data.get("error") is not None:
             raise AnkiConnectError(data['error'])
         return data.get("result")
+    except requests.exceptions.Timeout as e:
+        raise AnkiConnectError(f"Network timeout communicating with AnkiConnect: {e}")
     except requests.exceptions.RequestException as e:
         raise AnkiConnectError(f"Network error communicating with AnkiConnect: {e}")
 
@@ -164,8 +181,9 @@ def initialize_anki():
         deck_name = get_current_deck_name()
         _ensure_deck(deck_name)
         _ensure_models()
-    except AnkiConnectError:
-        raise ConnectionError("AnkiConnect is not available. Please ensure Anki is running with AnkiConnect.")
+    except AnkiConnectError as e:
+        # Catching the specific error after retries have failed.
+        raise ConnectionError(f"AnkiConnect is not available: {e}")
 
 
 def _remove_cloze_syntax(text):
@@ -288,7 +306,7 @@ def add_note(word, definition, sentences, context, all_words=None):
 
     # Try to add the basic note
     try:
-        _ac_request("addNote", {"note": basic_note}, timeout=5)
+        _ac_request("addNote", {"note": basic_note})
         print(f"Added Basic note for '{word}' directly to Anki.")
     except AnkiConnectError as e:
         if "duplicate" in str(e):
@@ -299,7 +317,7 @@ def add_note(word, definition, sentences, context, all_words=None):
 
     # Try to add the cloze note
     try:
-        _ac_request("addNote", {"note": cloze_note}, timeout=5)
+        _ac_request("addNote", {"note": cloze_note})
         print(f"Added Cloze note for '{word}' directly to Anki.")
     except AnkiConnectError as e:
         if "duplicate" in str(e):
