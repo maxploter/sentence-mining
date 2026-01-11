@@ -76,3 +76,23 @@ def generate_sentences(word, definition, context):
         sentences = [re.sub(r'^\d+\.\s*', '', s) for s in sentences]
         return sentences
     return []
+
+def create_cloze_with_llm(word, sentence):
+    """
+    Uses the LLM to intelligently create a cloze deletion for a word in a sentence,
+    handling different word forms.
+    """
+    system_prompt = """You are an Anki expert. Your task is to create a cloze deletion for a given sentence.
+Find the word provided by the user, or its inflected form (e.g., plural, past tense), in the sentence.
+Wrap ONLY that word or phrase with Anki's cloze syntax, like this: '{{c1::word}}'.
+Return only the modified sentence. Do not add any explanation."""
+    user_prompt = f"""The word to be clozed is '{word}'.
+The sentence is:
+---
+{sentence}
+---
+For example, if the word is 'run' and the sentence is 'He ran a marathon.', the output should be 'He {{c1::ran}} a marathon.'.
+If the word is 'walk' and the sentence is 'He was walking home.', the output should be 'He was {{c1::walking}} home.'.
+If the word is 'big data' and the sentence is 'The field of big data is growing.', the output should be 'The field of {{c1::big data}} is growing.'."""
+    
+    return llm_client.ask(system_prompt, user_prompt)

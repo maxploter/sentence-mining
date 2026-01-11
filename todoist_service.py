@@ -66,3 +66,24 @@ def complete_task(task_id):
     except Exception as e:
         print(f"Error completing task {task_id}: {e}")
         raise
+
+def add_label_to_task(task_id, label_name):
+    """
+    Adds a label to a task in Todoist without removing existing labels.
+    Raises an exception if the API call fails.
+    """
+    api = TodoistAPI(config.TODOIST_API_KEY)
+    try:
+        task = api.get_task(task_id=task_id)
+        # Ensure we don't add duplicate labels
+        if label_name not in task.labels:
+            new_labels = task.labels + [label_name]
+            is_success = api.update_task(task_id=task_id, labels=new_labels)
+            if not is_success:
+                raise Exception(f"Todoist API failed to update task {task_id} with label '{label_name}'.")
+            print(f"Added label '{label_name}' to task {task_id}.")
+        else:
+            print(f"Task {task_id} already has label '{label_name}'.")
+    except Exception as e:
+        print(f"Error adding label to task {task_id}: {e}")
+        raise

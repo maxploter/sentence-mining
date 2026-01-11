@@ -2,6 +2,7 @@ import random
 import todoist_service
 import llm_service
 import anki_service
+import config
 
 
 def main():
@@ -98,29 +99,39 @@ def main():
         random.shuffle(batch_notes)
         print("Shuffled notes order within the batch.")
 
+        failed_task_ids = set()
+        
         # c. Add shuffled notes to Anki
         try:
             for note_type, data in batch_notes:
-                if note_type == 'basic':
-                    print(f"Adding Basic note for '{data['word']}'...")
-                    anki_service.add_basic_note(data['word'], data['definition'], data['context'])
-                elif note_type == 'cloze':
-                    print(f"Adding Cloze note for '{data['word']}'...")
-                    anki_service.add_cloze_note(data['word'], data['sentences'], data['context'], all_words)
+                try:
+                    if note_type == 'basic':
+                        print(f"Adding Basic note for '{data['word']}'...")
+                        anki_service.add_basic_note(data['word'], data['definition'], data['context'])
+                    elif note_type == 'cloze':
+                        print(f"Adding Cloze note for '{data['word']}'...")
+                        anki_service.add_cloze_note(data['word'], data['sentences'], data['context'], all_words)
+                except ValueError:
+                    print(f"Cloze creation failed for '{data['word']}'. Tagging task for review.")
+                    todoist_service.add_label_to_task(data['task_id'], config.TODOIST_ERROR_TAG)
+                    failed_task_ids.add(data['task_id'])
+
         except Exception as e:
-            print(f"Error adding Anki note for '{data['word']}' in batch {i+1}. Halting process. Error: {e}")
+            # This catches critical errors like AnkiConnect being down
+            print(f"A critical error occurred while adding notes in batch {i+1}. Halting. Error: {e}")
             return
         
-        print("All notes in batch added successfully.")
+        print("All notes in batch processed.")
 
         # d. Complete Todoist tasks for the batch
-        try:
-            for data in batch:
-                print(f"Completing task for '{data['word']}'...")
-                todoist_service.complete_task(data['task_id'])
-        except Exception as e:
-            print(f"Error completing Todoist task for '{data['word']}' in batch {i+1}. Halting process. Error: {e}")
-            return
+        for data in batch:
+            if data['task_id'] not in failed_task_ids:
+                try:
+                    print(f"Completing task for '{data['word']}'...")
+                    todoist_service.complete_task(data['task_id'])
+                except Exception as e:
+                    print(f"Error completing Todoist task for '{data['word']}'. Halting process. Error: {e}")
+                    return
         
         print(f"--- Finished Batch {i+1}/{len(note_batches)} ---")
 

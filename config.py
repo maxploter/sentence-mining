@@ -16,6 +16,9 @@ ANKI_MODEL_NAME = "English Vocabulary Model"
 ANKI_MODEL_NAME_BASIC = os.getenv("ANKI_MODEL_NAME_BASIC", f"{ANKI_MODEL_NAME} (Basic)")
 ANKI_MODEL_NAME_CLOZE = os.getenv("ANKI_MODEL_NAME_CLOZE", f"{ANKI_MODEL_NAME} (Cloze)")
 
+# Tag to add to Todoist tasks that fail processing
+TODOIST_ERROR_TAG = os.getenv("TODOIST_ERROR_TAG", "needs_review")
+
 # AnkiConnect integration
 ANKICONNECT_URL = os.getenv("ANKICONNECT_URL", "http://localhost:8765")
 

@@ -3,6 +3,7 @@ import random
 import re
 import requests
 import datetime
+import llm_service
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception
 
 class AnkiConnectError(Exception):
@@ -219,6 +220,9 @@ def _handle_duplicate(word):
 
 
 def _create_cloze_sentence(word, sentence):
+    """
+    Creates a cloze-deleted sentence. First tries with regex, then falls back to LLM.
+    """
     # Normalize hyphens for both word and sentence to ensure matching
     normalized_word = word.replace('‑', '-').replace('—', '-')
     normalized_sentence = sentence.replace('‑', '-').replace('—', '-')
@@ -230,8 +234,13 @@ def _create_cloze_sentence(word, sentence):
     # If no bolded version was found, try replacing the plain word
     if count == 0:
         pattern_plain = f'({re.escape(normalized_word)})'
-        cloze_sentence, _ = re.subn(pattern_plain, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
-    
+        cloze_sentence, count = re.subn(pattern_plain, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+
+    # If regex methods failed, try the LLM
+    if count == 0:
+        print(f"Regex failed for '{word}'. Trying LLM to create cloze...")
+        cloze_sentence = llm_service.create_cloze_with_llm(word, sentence)
+
     return cloze_sentence
 
 
@@ -268,13 +277,20 @@ def add_basic_note(word, definition, context):
             raise
 
 def add_cloze_note(word, sentences, context, all_words=None):
-    """Adds a cloze deletion note to Anki."""
+    """
+    Adds a cloze deletion note to Anki.
+    Raises ValueError if a cloze cannot be created for any of the sentences.
+    """
     clean_word = _remove_cloze_syntax(word)
     clean_context = _remove_cloze_syntax(context)
     deck_name = get_current_deck_name()
     model_name = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
 
     cloze_sentences = [_create_cloze_sentence(word, s) for s in sentences]
+
+    # Check if at least one sentence has a cloze
+    if not any('{{c1::' in s for s in cloze_sentences):
+        raise ValueError(f"Failed to create a cloze for '{word}' in any of the provided sentences.")
 
     # Generate distractors for multiple choice
     distractors = []
@@ -283,8 +299,7 @@ def add_cloze_note(word, sentences, context, all_words=None):
         num_to_sample = min(2, len(potential_distractors))
         if num_to_sample > 0:
             distractors = random.sample(potential_distractors, num_to_sample)
-
-    # Fallback to placeholder distractors if not enough were found
+    
     placeholders = ['option2', 'option3']
     for i in range(2 - len(distractors)):
         distractors.append(placeholders[i])
@@ -315,8 +330,6 @@ def add_cloze_note(word, sentences, context, all_words=None):
         print(f"Added Cloze note for '{word}'.")
     except AnkiConnectError as e:
         if "duplicate" in str(e):
-            # The duplicate handler for the basic note should have already run.
-            # We can choose to run it again or just skip. Let's skip for now.
              print(f"Cloze note for '{word}' already exists.")
         else:
             print(f"Failed to add Cloze note for '{word}': {e}")
