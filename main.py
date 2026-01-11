@@ -41,6 +41,9 @@ def main():
                 print(f"Task '{task.content}' has no word in title or description. Skipping.")
                 continue
         
+        # Strip markdown formatting from the word
+        word = llm_service.strip_markdown_formatting(word)
+
         if word:
             all_words.append(word)
             processed_tasks.append({'task': task, 'word': word, 'context': context})

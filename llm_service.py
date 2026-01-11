@@ -26,6 +26,18 @@ class LLM:
             print(f"Error communicating with Nebius: {e}")
             raise
 
+def strip_markdown_formatting(text):
+    """
+    Removes common markdown formatting (bold, italics) from a string.
+    """
+    if not isinstance(text, str):
+        return text
+    # Remove bold (**text**) and italics (*text* or _text_)
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'_(.*?)_', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    return text
+
 llm_client = LLM()
 
 def get_definition(word, context):
