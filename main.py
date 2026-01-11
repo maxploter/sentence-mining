@@ -1,3 +1,4 @@
+import random
 import todoist_service
 import llm_service
 import anki_service
@@ -22,7 +23,7 @@ def main():
         print("No tasks found in Todoist. Exiting.")
         return
 
-    # Pre-process tasks to gather all words for distractor generation
+    # 3. Pre-process tasks to gather all words for distractor generation
     all_words = []
     processed_tasks = []
     for task in tasks:
@@ -41,7 +42,6 @@ def main():
                 print(f"Task '{task.content}' has no word in title or description. Skipping.")
                 continue
         
-        # Strip markdown formatting from the word
         word = llm_service.strip_markdown_formatting(word)
 
         if word:
@@ -50,7 +50,8 @@ def main():
 
     print(f"Found {len(processed_tasks)} tasks to process.")
 
-    # 3. Process each pre-processed task
+    # 4. Process all tasks to gather data for notes
+    notes_data = []
     for item in processed_tasks:
         task = item['task']
         word = item['word']
@@ -58,27 +59,70 @@ def main():
 
         print(f"Processing word: {word}")
 
-        # 4. Get definition from LLM
         definition = llm_service.get_definition(word, context)
         if not definition:
             print(f"Could not get definition for {word}. Skipping.")
             continue
         print(f"Definition for {word}: {definition}")
 
-        # 5. Generate sentences from LLM
         sentences = llm_service.generate_sentences(word, definition, context)
         if not sentences or len(sentences) < 3:
             print(f"Could not generate enough sentences for {word}. Skipping.")
             continue
         print(f"Generated sentences for {word}.")
 
-        # 6. Add note to Anki
-        anki_service.add_note(word, definition, sentences, context, all_words)
-        print(f"Added note for {word} to Anki deck.")
+        notes_data.append({
+            'word': word,
+            'definition': definition,
+            'sentences': sentences,
+            'context': context,
+            'task_id': task.id
+        })
 
-        # 7. Complete the task in Todoist
-        todoist_service.complete_task(task.id)
-        print(f"Completed task for {word} in Todoist.")
+    # 5. Define batch size and create batches
+    BATCH_SIZE = 3
+    note_batches = [notes_data[i:i + BATCH_SIZE] for i in range(0, len(notes_data), BATCH_SIZE)]
+    print(f"Created {len(note_batches)} batches of size {BATCH_SIZE}.")
+
+    # 6. Process each batch
+    for i, batch in enumerate(note_batches):
+        print(f"--- Processing Batch {i+1}/{len(note_batches)} ---")
+        
+        # a. Create a list of all notes for the batch
+        batch_notes = []
+        for data in batch:
+            batch_notes.append(('basic', data))
+            batch_notes.append(('cloze', data))
+        
+        # b. Shuffle the notes within the batch
+        random.shuffle(batch_notes)
+        print("Shuffled notes order within the batch.")
+
+        # c. Add shuffled notes to Anki
+        try:
+            for note_type, data in batch_notes:
+                if note_type == 'basic':
+                    print(f"Adding Basic note for '{data['word']}'...")
+                    anki_service.add_basic_note(data['word'], data['definition'], data['context'])
+                elif note_type == 'cloze':
+                    print(f"Adding Cloze note for '{data['word']}'...")
+                    anki_service.add_cloze_note(data['word'], data['sentences'], data['context'], all_words)
+        except Exception as e:
+            print(f"Error adding Anki note for '{data['word']}' in batch {i+1}. Halting process. Error: {e}")
+            return
+        
+        print("All notes in batch added successfully.")
+
+        # d. Complete Todoist tasks for the batch
+        try:
+            for data in batch:
+                print(f"Completing task for '{data['word']}'...")
+                todoist_service.complete_task(data['task_id'])
+        except Exception as e:
+            print(f"Error completing Todoist task for '{data['word']}' in batch {i+1}. Halting process. Error: {e}")
+            return
+        
+        print(f"--- Finished Batch {i+1}/{len(note_batches)} ---")
 
     print("Sentence mining process finished.")
 

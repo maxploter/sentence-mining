@@ -218,26 +218,63 @@ def _handle_duplicate(word):
         print(f"Error handling duplicate for '{word}': {e}")
 
 
-def add_note(word, definition, sentences, context, all_words=None):
-    """Adds a note either directly to Anki (AnkiConnect) or to the local genanki deck."""
+def _create_cloze_sentence(word, sentence):
+    # Normalize hyphens for both word and sentence to ensure matching
+    normalized_word = word.replace('‑', '-').replace('—', '-')
+    normalized_sentence = sentence.replace('‑', '-').replace('—', '-')
 
-    # For cloze deletion, replace the word with {{c1::word}}
-    cloze_sentences = []
-    for sentence in sentences:
-        # Normalize hyphens for both word and sentence to ensure matching
-        normalized_word = word.replace('‑', '-').replace('—', '-')
-        normalized_sentence = sentence.replace('‑', '-').replace('—', '-')
+    # First, try to replace the word if it's formatted as bold markdown
+    pattern_bold = f'\\*\\*({re.escape(normalized_word)})\\*\\*'
+    cloze_sentence, count = re.subn(pattern_bold, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
 
-        # First, try to replace the word if it's formatted as bold markdown
-        pattern_bold = f'\\*\\*({re.escape(normalized_word)})\\*\\*'
-        cloze_sentence, count = re.subn(pattern_bold, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+    # If no bolded version was found, try replacing the plain word
+    if count == 0:
+        pattern_plain = f'({re.escape(normalized_word)})'
+        cloze_sentence, _ = re.subn(pattern_plain, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+    
+    return cloze_sentence
 
-        # If no bolded version was found, try replacing the plain word
-        if count == 0:
-            pattern_plain = f'({re.escape(normalized_word)})'
-            cloze_sentence, _ = re.subn(pattern_plain, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
 
-        cloze_sentences.append(cloze_sentence)
+def add_basic_note(word, definition, context):
+    """Adds a basic word/definition note to Anki."""
+    clean_word = _remove_cloze_syntax(word)
+    clean_context = _remove_cloze_syntax(context)
+    deck_name = get_current_deck_name()
+    model_name = getattr(config, "ANKI_MODEL_NAME_BASIC", f"{config.ANKI_MODEL_NAME} (Basic)")
+
+    note = {
+        "deckName": deck_name,
+        "modelName": model_name,
+        "fields": {
+            "Word": clean_word,
+            "Definition": definition,
+            "Context": clean_context or "",
+        },
+        "options": {
+            "allowDuplicate": False,
+            "duplicateScope": "deck",
+            "duplicateScopeOptions": {"deckName": deck_name, "checkChildren": True, "checkAllModels": False}
+        }
+    }
+    try:
+        _ac_request("addNote", {"note": note})
+        print(f"Added Basic note for '{word}'.")
+    except AnkiConnectError as e:
+        if "duplicate" in str(e):
+            print(f"Basic note for '{word}' already exists. Resetting learning progress.")
+            _handle_duplicate(clean_word)
+        else:
+            print(f"Failed to add Basic note for '{word}': {e}")
+            raise
+
+def add_cloze_note(word, sentences, context, all_words=None):
+    """Adds a cloze deletion note to Anki."""
+    clean_word = _remove_cloze_syntax(word)
+    clean_context = _remove_cloze_syntax(context)
+    deck_name = get_current_deck_name()
+    model_name = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
+
+    cloze_sentences = [_create_cloze_sentence(word, s) for s in sentences]
 
     # Generate distractors for multiple choice
     distractors = []
@@ -251,40 +288,14 @@ def add_note(word, definition, sentences, context, all_words=None):
     placeholders = ['option2', 'option3']
     for i in range(2 - len(distractors)):
         distractors.append(placeholders[i])
-
+    
     options_list = [word] + distractors
     random.shuffle(options_list)
     options = f"({', '.join(options_list)})"
 
-    # Clean the word and context from any accidental cloze syntax before using in non-cloze fields
-    clean_word = _remove_cloze_syntax(word)
-    clean_context = _remove_cloze_syntax(context)
-
-    deck_name = get_current_deck_name()
-    basic_model = getattr(config, "ANKI_MODEL_NAME_BASIC", f"{config.ANKI_MODEL_NAME} (Basic)")
-    cloze_model = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
-
-    basic_note = {
+    note = {
         "deckName": deck_name,
-        "modelName": basic_model,
-        "fields": {
-            "Word": clean_word,
-            "Definition": definition,
-            "Context": clean_context or "",
-        },
-        "options": {
-            "allowDuplicate": False,
-            "duplicateScope": "deck",
-            "duplicateScopeOptions": {
-                "deckName": deck_name,
-                "checkChildren": True,
-                "checkAllModels": False
-            }
-        }
-    }
-    cloze_note = {
-        "deckName": deck_name,
-        "modelName": cloze_model,
+        "modelName": model_name,
         "fields": {
             "Word": clean_word,
             "Sentence1": cloze_sentences[0] if len(cloze_sentences) > 0 else '',
@@ -296,33 +307,17 @@ def add_note(word, definition, sentences, context, all_words=None):
         "options": {
             "allowDuplicate": False,
             "duplicateScope": "deck",
-            "duplicateScopeOptions": {
-                "deckName": deck_name,
-                "checkChildren": True,
-                "checkAllModels": False
-            }
+            "duplicateScopeOptions": {"deckName": deck_name, "checkChildren": True, "checkAllModels": False}
         }
     }
-
-    # Try to add the basic note
     try:
-        _ac_request("addNote", {"note": basic_note})
-        print(f"Added Basic note for '{word}' directly to Anki.")
+        _ac_request("addNote", {"note": note})
+        print(f"Added Cloze note for '{word}'.")
     except AnkiConnectError as e:
         if "duplicate" in str(e):
-            print(f"Note for '{word}' already exists. Resetting learning progress.")
-            _handle_duplicate(clean_word)
-        else:
-            print(f"Failed to add Basic note for '{word}': {e}")
-
-    # Try to add the cloze note
-    try:
-        _ac_request("addNote", {"note": cloze_note})
-        print(f"Added Cloze note for '{word}' directly to Anki.")
-    except AnkiConnectError as e:
-        if "duplicate" in str(e):
-            # The duplicate handler would have already been called for the basic note,
-            # so we can just log this or do nothing.
-            pass
+            # The duplicate handler for the basic note should have already run.
+            # We can choose to run it again or just skip. Let's skip for now.
+             print(f"Cloze note for '{word}' already exists.")
         else:
             print(f"Failed to add Cloze note for '{word}': {e}")
+            raise
