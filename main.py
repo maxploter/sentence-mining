@@ -76,9 +76,9 @@ def main():
         anki_service.add_note(word, definition, sentences, context, all_words)
         print(f"Added note for {word} to Anki deck.")
 
-        # 7. Complete the task in Todoist (optional, uncomment to enable)
-        # todoist_service.complete_task(task.id)
-        # print(f"Completed task for {word} in Todoist.")
+        # 7. Complete the task in Todoist
+        todoist_service.complete_task(task.id)
+        print(f"Completed task for {word} in Todoist.")
 
     print("Sentence mining process finished.")
 

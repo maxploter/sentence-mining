@@ -55,12 +55,14 @@ def parse_task_word(task_content):
 def complete_task(task_id):
     """
     Marks a task as complete in Todoist.
-    (Placeholder for now)
+    Raises an exception if the API call fails.
     """
-    # api = TodoistAPI(config.TODOIST_API_KEY)
-    # try:
-    #     api.close_task(task_id=task_id)
-    #     print(f"Task {task_id} completed.")
-    # except Exception as e:
-    #     print(f"Error completing task {task_id}: {e}")
-    pass
+    api = TodoistAPI(config.TODOIST_API_KEY)
+    try:
+        is_success = api.close_task(task_id=task_id)
+        if not is_success:
+            raise Exception(f"Todoist API failed to close task {task_id}.")
+        print(f"Task {task_id} completed.")
+    except Exception as e:
+        print(f"Error completing task {task_id}: {e}")
+        raise
