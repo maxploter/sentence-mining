@@ -19,8 +19,9 @@ def main():
         print(e)
         return
 
-    # Generate a date tag for the current run
-    date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
+    # Generate date tags for the current run
+    now = datetime.datetime.now()
+    date_tags = [f"Year::{now.year}", f"Month::{now.month:02}"]
 
     # 2. Fetch tasks from Todoist
     tasks = todoist_service.get_tasks()
@@ -111,10 +112,10 @@ def main():
                 try:
                     if note_type == 'basic':
                         print(f"Adding Basic note for '{data['word']}'...")
-                        anki_service.add_basic_note(data['word'], data['definition'], data['context'], tags=[date_tag])
+                        anki_service.add_basic_note(data['word'], data['definition'], data['context'], tags=date_tags)
                     elif note_type == 'cloze':
                         print(f"Adding Cloze note for '{data['word']}'...")
-                        anki_service.add_cloze_note(data['word'], data['sentences'], data['context'], all_words, tags=[date_tag])
+                        anki_service.add_cloze_note(data['word'], data['sentences'], data['context'], all_words, tags=date_tags)
                 except ValueError:
                     print(f"Cloze creation failed for '{data['word']}'. Tagging task for review.")
                     todoist_service.add_label_to_task(data['task_id'], config.TODOIST_ERROR_TAG)
