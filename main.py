@@ -1,11 +1,13 @@
 import datetime
-import todoist_service
-import llm_service
-import anki_service
 import config
+from todoist_service import TodoistService
+from llm_service import LLMService
+from anki_service import AnkiService
+from repositories.todoist_repository import TodoistRepository
+from repositories.llm_repository import LLMRepository
+from repositories.anki_repository import AnkiRepository
 
-
-def main():
+def run_process(todoist_service: TodoistService, llm_service: LLMService, anki_service: AnkiService):
     """
     Main function to run the sentence mining process.
     """
@@ -40,7 +42,6 @@ def main():
         source_context = task.content # For the 'Context' field in Anki
 
         if not word:
-            # If word is not in title, assume first line of description is the word
             if sentence1:
                 lines = sentence1.split('\n')
                 word = lines[0].strip()
@@ -82,14 +83,12 @@ def main():
                 tags=date_tags
             )
         except ValueError:
-            # This error is raised from anki_service if cloze creation fails
             print(f"Cloze creation failed for '{word}'. Tagging task for review.")
             todoist_service.add_label_to_task(task.id, config.TODOIST_ERROR_TAG)
-            continue # Move to the next task
+            continue
         except Exception as e:
-            # This catches critical errors like AnkiConnect being down
             print(f"A critical error occurred while adding note for '{word}'. Halting. Error: {e}")
-            return # Stop the whole process
+            return
 
         # e. Complete Todoist task
         try:
@@ -97,12 +96,26 @@ def main():
             todoist_service.complete_task(task.id)
         except Exception as e:
             print(f"Error completing Todoist task for '{word}'. Halting. Error: {e}")
-            return # Stop the whole process
+            return
 
         print(f"--- Finished task for '{word}' ---")
 
     print("Sentence mining process finished.")
 
+def main():
+    """
+    Composition root of the application.
+    Initializes repositories and services and runs the main process.
+    """
+    # Initialize repositories
+    todoist_repo = TodoistRepository()
+    llm_repo = LLMRepository()
+    anki_repo = AnkiRepository()
 
-if __name__ == "__main__":
-    main()
+    # Initialize services with injected repositories
+    llm_service = LLMService(llm_repo)
+    todoist_service = TodoistService(todoist_repo)
+    anki_service = AnkiService(anki_repo, llm_service) # AnkiService needs LLMService
+
+    # Run the main process
+    run_process(todoist_service, llm_service, anki_service)
