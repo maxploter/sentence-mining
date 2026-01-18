@@ -2,7 +2,6 @@ import config
 import random
 import re
 import requests
-import datetime
 import llm_service
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception
 
@@ -15,8 +14,7 @@ class AnkiConnectError(Exception):
 # ---------------------------
 
 def get_current_deck_name():
-    now = datetime.datetime.now()
-    return f"{config.ANKI_DECK_NAME}::{now.year}-{now.month:02}"
+    return config.ANKI_DECK_NAME
 
 def is_retryable(exception):
     """Return True if we should retry on a timeout or network error."""
@@ -244,7 +242,7 @@ def _create_cloze_sentence(word, sentence):
     return cloze_sentence
 
 
-def add_basic_note(word, definition, context):
+def add_basic_note(word, definition, context, tags=None):
     """Adds a basic word/definition note to Anki."""
     clean_word = _remove_cloze_syntax(word)
     clean_context = _remove_cloze_syntax(context)
@@ -263,7 +261,8 @@ def add_basic_note(word, definition, context):
             "allowDuplicate": False,
             "duplicateScope": "deck",
             "duplicateScopeOptions": {"deckName": deck_name, "checkChildren": True, "checkAllModels": False}
-        }
+        },
+        "tags": tags or [],
     }
     try:
         _ac_request("addNote", {"note": note})
@@ -276,7 +275,7 @@ def add_basic_note(word, definition, context):
             print(f"Failed to add Basic note for '{word}': {e}")
             raise
 
-def add_cloze_note(word, sentences, context, all_words=None):
+def add_cloze_note(word, sentences, context, all_words=None, tags=None):
     """
     Adds a cloze deletion note to Anki.
     Raises ValueError if a cloze cannot be created for any of the sentences.
@@ -323,7 +322,8 @@ def add_cloze_note(word, sentences, context, all_words=None):
             "allowDuplicate": False,
             "duplicateScope": "deck",
             "duplicateScopeOptions": {"deckName": deck_name, "checkChildren": True, "checkAllModels": False}
-        }
+        },
+        "tags": tags or [],
     }
     try:
         _ac_request("addNote", {"note": note})
