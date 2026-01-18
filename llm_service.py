@@ -56,26 +56,21 @@ def get_definition(word, context):
     """
     return llm_client.ask(system_prompt, user_prompt)
 
-def generate_sentences(word, definition, context):
+def generate_sentence(word, definition, context):
     """
-    Generates three example sentences for a word.
+    Generates one example sentence for a word.
     """
-    system_prompt = "You are a helpful assistant that generates example sentences."
+    system_prompt = "You are a helpful assistant that generates an example sentence."
     user_prompt = f"""
     The word is "{word}".
     Its definition is: "{definition}".
     It appeared in the original context: "{context}".
 
-    Please generate three new, distinct sentences using the word "{word}".
-    The sentences should be easy to understand and clearly demonstrate the meaning of the word.
-    Return the sentences as a numbered list.
+    Please generate one new, distinct sentence using the word "{word}".
+    The sentence should be easy to understand and clearly demonstrate the meaning of the word.
+    Return only the sentence.
     """
-    response_text = llm_client.ask(system_prompt, user_prompt)
-    if response_text:
-        sentences = [s.strip() for s in response_text.split('\n') if s.strip()]
-        sentences = [re.sub(r'^\d+\.\s*', '', s) for s in sentences]
-        return sentences
-    return []
+    return llm_client.ask(system_prompt, user_prompt)
 
 def create_cloze_with_llm(word, sentence):
     """

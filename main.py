@@ -1,4 +1,3 @@
-import random
 import datetime
 import todoist_service
 import llm_service
@@ -21,124 +20,86 @@ def main():
 
     # Generate date tags for the current run
     now = datetime.datetime.now()
-    date_tags = [f"Year::{now.year}", f"Month::{now.month:02}"]
+    date_tags = [f"Year::{now.year}", f"Month::{now.month:02d}"]
 
     # 2. Fetch tasks from Todoist
     tasks = todoist_service.get_tasks()
     if not tasks:
         print("No tasks found in Todoist. Exiting.")
         return
+    
+    print(f"Found {len(tasks)} tasks to process.")
 
-    # 3. Pre-process tasks to gather all words for distractor generation
-    all_words = []
-    processed_tasks = []
+    # 3. Process each task
     for task in tasks:
+        print(f"--- Processing task: {task.content} ---")
+
+        # a. Parse word and context from task
         word = todoist_service.parse_task_word(task.content)
-        context = task.description
+        sentence1 = task.description
+        source_context = task.content # For the 'Context' field in Anki
 
         if not word:
-            if context:
-                lines = context.split('\n')
+            # If word is not in title, assume first line of description is the word
+            if sentence1:
+                lines = sentence1.split('\n')
                 word = lines[0].strip()
-                if len(lines) > 1:
-                    context = '\n'.join(lines[1:]).strip()
-                else:
-                    context = ""
+                sentence1 = '\n'.join(lines[1:]).strip()
             else:
                 print(f"Task '{task.content}' has no word in title or description. Skipping.")
                 continue
         
         word = llm_service.strip_markdown_formatting(word)
 
-        if word:
-            all_words.append(word)
-            processed_tasks.append({'task': task, 'word': word, 'context': context})
+        if not sentence1:
+            print(f"Task for '{word}' has no context sentence in description. Skipping.")
+            continue
 
-    print(f"Found {len(processed_tasks)} tasks to process.")
+        print(f"Processing word: '{word}'")
 
-    # 4. Process all tasks to gather data for notes
-    notes_data = []
-    for item in processed_tasks:
-        task = item['task']
-        word = item['word']
-        context = item['context']
-
-        print(f"Processing word: {word}")
-
-        definition = llm_service.get_definition(word, context)
+        # b. Get definition from LLM
+        definition = llm_service.get_definition(word, sentence1)
         if not definition:
-            print(f"Could not get definition for {word}. Skipping.")
+            print(f"Could not get definition for '{word}'. Skipping.")
             continue
-        print(f"Definition for {word}: {definition}")
+        print(f"Definition: {definition}")
 
-        sentences = llm_service.generate_sentences(word, definition, context)
-        if not sentences or len(sentences) < 3:
-            print(f"Could not generate enough sentences for {word}. Skipping.")
+        # c. Generate second sentence from LLM
+        sentence2 = llm_service.generate_sentence(word, definition, sentence1)
+        if not sentence2:
+            print(f"Could not generate a sentence for '{word}'. Skipping.")
             continue
-        print(f"Generated sentences for {word}.")
+        print(f"Generated sentence: {sentence2}")
 
-        notes_data.append({
-            'word': word,
-            'definition': definition,
-            'sentences': sentences,
-            'context': context,
-            'task_id': task.id
-        })
-
-    # 5. Define batch size and create batches
-    BATCH_SIZE = 3
-    note_batches = [notes_data[i:i + BATCH_SIZE] for i in range(0, len(notes_data), BATCH_SIZE)]
-    print(f"Created {len(note_batches)} batches of size {BATCH_SIZE}.")
-
-    # 6. Process each batch
-    for i, batch in enumerate(note_batches):
-        print(f"--- Processing Batch {i+1}/{len(note_batches)} ---")
-        
-        # a. Create a list of all notes for the batch
-        batch_notes = []
-        for data in batch:
-            batch_notes.append(('basic', data))
-            batch_notes.append(('cloze', data))
-        
-        # b. Shuffle the notes within the batch
-        random.shuffle(batch_notes)
-        print("Shuffled notes order within the batch.")
-
-        failed_task_ids = set()
-        
-        # c. Add shuffled notes to Anki
+        # d. Add note to Anki
         try:
-            for note_type, data in batch_notes:
-                try:
-                    if note_type == 'basic':
-                        print(f"Adding Basic note for '{data['word']}'...")
-                        anki_service.add_basic_note(data['word'], data['definition'], data['context'], tags=date_tags)
-                    elif note_type == 'cloze':
-                        print(f"Adding Cloze note for '{data['word']}'...")
-                        anki_service.add_cloze_note(data['word'], data['sentences'], data['context'], all_words, tags=date_tags)
-                except ValueError:
-                    print(f"Cloze creation failed for '{data['word']}'. Tagging task for review.")
-                    todoist_service.add_label_to_task(data['task_id'], config.TODOIST_ERROR_TAG)
-                    failed_task_ids.add(data['task_id'])
-
+            anki_service.add_note(
+                word,
+                definition,
+                sentence1,
+                sentence2,
+                source_context,
+                tags=date_tags
+            )
+        except ValueError:
+            # This error is raised from anki_service if cloze creation fails
+            print(f"Cloze creation failed for '{word}'. Tagging task for review.")
+            todoist_service.add_label_to_task(task.id, config.TODOIST_ERROR_TAG)
+            continue # Move to the next task
         except Exception as e:
             # This catches critical errors like AnkiConnect being down
-            print(f"A critical error occurred while adding notes in batch {i+1}. Halting. Error: {e}")
-            return
-        
-        print("All notes in batch processed.")
+            print(f"A critical error occurred while adding note for '{word}'. Halting. Error: {e}")
+            return # Stop the whole process
 
-        # d. Complete Todoist tasks for the batch
-        for data in batch:
-            if data['task_id'] not in failed_task_ids:
-                try:
-                    print(f"Completing task for '{data['word']}'...")
-                    todoist_service.complete_task(data['task_id'])
-                except Exception as e:
-                    print(f"Error completing Todoist task for '{data['word']}'. Halting process. Error: {e}")
-                    return
-        
-        print(f"--- Finished Batch {i+1}/{len(note_batches)} ---")
+        # e. Complete Todoist task
+        try:
+            print(f"Completing task for '{word}'...")
+            todoist_service.complete_task(task.id)
+        except Exception as e:
+            print(f"Error completing Todoist task for '{word}'. Halting. Error: {e}")
+            return # Stop the whole process
+
+        print(f"--- Finished task for '{word}' ---")
 
     print("Sentence mining process finished.")
 

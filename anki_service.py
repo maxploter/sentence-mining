@@ -1,5 +1,4 @@
 import config
-import random
 import re
 import requests
 import llm_service
@@ -59,127 +58,60 @@ def _ensure_deck(deck_name: str):
         _ac_request("createDeck", {"deck": deck_name})
 
 
-def _ensure_models():
+def _ensure_model():
     """
-    Ensure two models in Anki:
-    - Basic model for Word<->Definition cards (non-cloze)
-    - Cloze model for sentence cloze cards
+    Ensure the cloze model for sentence mining exists in Anki.
     """
-    basic_name = getattr(config, "ANKI_MODEL_NAME_BASIC", f"{config.ANKI_MODEL_NAME} (Basic)")
-    cloze_name = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
-
+    model_name = config.ANKI_MODEL_NAME
     names = _ac_request("modelNames") or []
 
-    css_basic = """
-    .card {
-     font-family: arial;
-     font-size: 20px;
-     text-align: center;
-     color: black;
-     background-color: white;
-    }
-    """
-
-    css_cloze = """
-    .card {
-     font-family: arial;
-     font-size: 20px;
-     text-align: center;
-     color: black;
-     background-color: white;
-    }
-    .cloze {
-     font-weight: bold;
-     color: blue;
-    }
-    """
-
-    if basic_name not in names:
-        params_basic = {
-            "modelName": basic_name,
-            "inOrderFields": [
-                "Word",
-                "Definition",
-                "Context",
-            ],
-            "css": css_basic,
-            "isCloze": False,
-            "cardTemplates": [
-                {
-                    "Name": "Word -> Definition",
-                    "Front": "{{Word}}",
-                    "Back": "{{FrontSide}}<hr id=\"answer\">{{Definition}}<br><br>{{Context}}",
-                },
-                {
-                    "Name": "Definition -> Word",
-                    "Front": "{{Definition}}",
-                    "Back": "{{FrontSide}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
-                },
-            ],
+    if model_name not in names:
+        css = """
+        .card {
+         font-family: arial;
+         font-size: 20px;
+         text-align: center;
+         color: black;
+         background-color: white;
         }
-        _ac_request("createModel", params_basic)
-
-    # Refresh names after create
-    names = _ac_request("modelNames") or []
-
-    if cloze_name not in names:
-        params_cloze = {
-            "modelName": cloze_name,
+        .cloze {
+         font-weight: bold;
+         color: blue;
+        }
+        """
+        params = {
+            "modelName": model_name,
             "inOrderFields": [
-                "Word",
-                "Sentence1",
-                "Sentence2",
-                "Sentence3",
-                "Context",
-                "Options",
+                "Word",       # The target word
+                "Text",       # The full text with cloze deletions
+                "Definition", # The word's definition
+                "Context",    # Original context/source
             ],
-            "css": css_cloze,
+            "css": css,
             "isCloze": True,
             "cardTemplates": [
                 {
-                    "Name": "Sentence 1 (Cloze)",
-                    "Front": "{{cloze:Sentence1}}",
-                    "Back": "{{cloze:Sentence1}}<br><br>{{Word}}<br><br>{{Context}}",
-                },
-                {
-                    "Name": "Sentence 1 (Multiple Choice)",
-                    "Front": "{{cloze:Sentence1}}<br><br>{{Options}}",
-                    "Back": "{{cloze:Sentence1}}<br><br>{{Options}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
-                },
-                {
-                    "Name": "Sentence 2 (Cloze)",
-                    "Front": "{{cloze:Sentence2}}",
-                    "Back": "{{cloze:Sentence2}}<br><br>{{Word}}<br><br>{{Context}}",
-                },
-                {
-                    "Name": "Sentence 2 (Multiple Choice)",
-                    "Front": "{{cloze:Sentence2}}<br><br>{{Options}}",
-                    "Back": "{{cloze:Sentence2}}<br><br>{{Options}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
-                },
-                {
-                    "Name": "Sentence 3 (Cloze)",
-                    "Front": "{{cloze:Sentence3}}",
-                    "Back": "{{cloze:Sentence3}}<br><br>{{Word}}<br><br>{{Context}}",
-                },
-                {
-                    "Name": "Sentence 3 (Multiple Choice)",
-                    "Front": "{{cloze:Sentence3}}<br><br>{{Options}}",
-                    "Back": "{{cloze:Sentence3}}<br><br>{{Options}}<hr id=\"answer\">{{Word}}<br><br>{{Context}}",
-                },
+                    "Name": "Sentence Cloze",
+                    "Front": "{{cloze:Text}}",
+                    "Back": "{{cloze:Text}}<hr id=answer>"
+                            "<b>{{Word}}</b><br><br>"
+                            "{{Definition}}<br><br>"
+                            "<em>Source: {{Context}}</em>"
+                }
             ],
         }
-        _ac_request("createModel", params_cloze)
+        _ac_request("createModel", params)
 
 
 def initialize_anki():
     """
-    Checks connection to AnkiConnect and ensures deck and models exist.
+    Checks connection to AnkiConnect and ensures deck and model exist.
     """
     try:
         _ac_request("version")
         deck_name = get_current_deck_name()
         _ensure_deck(deck_name)
-        _ensure_models()
+        _ensure_model()
     except AnkiConnectError as e:
         # Catching the specific error after retries have failed.
         raise ConnectionError(f"AnkiConnect is not available: {e}")
@@ -192,145 +124,85 @@ def _remove_cloze_syntax(text):
     return re.sub(r'\{\{c\d+::(.*?)\}\}', r'\1', text)
 
 
-def _handle_duplicate(word):
-    """Finds a note by word and resets its learning progress."""
-    deck_name = get_current_deck_name()
-    query = f'"deck:{deck_name}" "Word:{word}"'
-    try:
-        note_ids = _ac_request("findNotes", {"query": query})
-        if not note_ids:
-            print(f"Could not find duplicate note for word '{word}' to forget.")
-            return
-
-        print(f"Found {len(note_ids)} duplicate notes for '{word}'.")
-
-        notes_info = _ac_request("notesInfo", {"notes": note_ids})
-        card_ids = []
-        for note_info in notes_info:
-            card_ids.extend(note_info['cards'])
-        
-        if card_ids:
-            _ac_request("forgetCards", {"cards": card_ids})
-            print(f"Reset learning progress for {len(card_ids)} cards of word '{word}'.")
-
-    except AnkiConnectError as e:
-        print(f"Error handling duplicate for '{word}': {e}")
-
-
-def _create_cloze_sentence(word, sentence):
+def _create_cloze_sentence(word, sentence, cloze_number):
     """
-    Creates a cloze-deleted sentence. First tries with regex, then falls back to LLM.
+    Creates a cloze-deleted sentence for a specific cloze number (c1, c2, etc.).
     """
     # Normalize hyphens for both word and sentence to ensure matching
     normalized_word = word.replace('‑', '-').replace('—', '-')
     normalized_sentence = sentence.replace('‑', '-').replace('—', '-')
+    
+    cloze_tag = f"{{{{c{cloze_number}::\\1}}}}"
 
     # First, try to replace the word if it's formatted as bold markdown
     pattern_bold = f'\\*\\*({re.escape(normalized_word)})\\*\\*'
-    cloze_sentence, count = re.subn(pattern_bold, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+    cloze_sentence, count = re.subn(pattern_bold, cloze_tag, normalized_sentence, flags=re.IGNORECASE)
 
     # If no bolded version was found, try replacing the plain word
     if count == 0:
         pattern_plain = f'({re.escape(normalized_word)})'
-        cloze_sentence, count = re.subn(pattern_plain, r'{{c1::\1}}', normalized_sentence, flags=re.IGNORECASE)
+        cloze_sentence, count = re.subn(pattern_plain, cloze_tag, normalized_sentence, flags=re.IGNORECASE)
 
     # If regex methods failed, try the LLM
     if count == 0:
         print(f"Regex failed for '{word}'. Trying LLM to create cloze...")
-        cloze_sentence = llm_service.create_cloze_with_llm(word, sentence)
+        # Note: We need to adapt the LLM prompt if we want it to handle c1, c2 etc.
+        # For now, we assume the LLM will use c1, and we replace it.
+        llm_cloze = llm_service.create_cloze_with_llm(word, sentence)
+        if '{{c1::' in llm_cloze:
+            cloze_sentence = llm_cloze.replace('{{c1::', f'{{{{c{cloze_number}::')
+        else:
+             cloze_sentence = sentence # Fallback to sentence if LLM fails
+
+    if f"c{cloze_number}::" not in cloze_sentence:
+        raise ValueError(f"Failed to create a cloze for '{word}' in sentence: '{sentence}'")
 
     return cloze_sentence
 
 
-def add_basic_note(word, definition, context, tags=None):
-    """Adds a basic word/definition note to Anki."""
+def add_note(word, definition, sentence1, sentence2, context, tags=None):
+    """
+    Adds a single cloze note with two sentences to Anki.
+    """
     clean_word = _remove_cloze_syntax(word)
     clean_context = _remove_cloze_syntax(context)
     deck_name = get_current_deck_name()
-    model_name = getattr(config, "ANKI_MODEL_NAME_BASIC", f"{config.ANKI_MODEL_NAME} (Basic)")
+    model_name = config.ANKI_MODEL_NAME
+
+    try:
+        cloze1 = _create_cloze_sentence(word, sentence1, 1)
+        cloze2 = _create_cloze_sentence(word, sentence2, 2)
+    except ValueError as e:
+        print(e)
+        raise # Re-raise to be caught in main loop
+
+    full_text = f"{cloze1}<br>{cloze2}"
 
     note = {
         "deckName": deck_name,
         "modelName": model_name,
         "fields": {
             "Word": clean_word,
+            "Text": full_text,
             "Definition": definition,
             "Context": clean_context or "",
         },
         "options": {
-            "allowDuplicate": False,
-            "duplicateScope": "deck",
-            "duplicateScopeOptions": {"deckName": deck_name, "checkChildren": True, "checkAllModels": False}
+            "allowDuplicate": True,
         },
         "tags": tags or [],
     }
+    
+    # Check for duplicates based on the 'Word' field before adding
+    query = f'"deck:{deck_name}" "note:{model_name}" "Word:{clean_word}"'
+    duplicate_notes = _ac_request("findNotes", {"query": query})
+    if duplicate_notes:
+        print(f"Note for '{word}' already exists. Skipping.")
+        return
+
     try:
         _ac_request("addNote", {"note": note})
-        print(f"Added Basic note for '{word}'.")
+        print(f"Added note for '{word}'.")
     except AnkiConnectError as e:
-        if "duplicate" in str(e):
-            print(f"Basic note for '{word}' already exists. Resetting learning progress.")
-            _handle_duplicate(clean_word)
-        else:
-            print(f"Failed to add Basic note for '{word}': {e}")
-            raise
-
-def add_cloze_note(word, sentences, context, all_words=None, tags=None):
-    """
-    Adds a cloze deletion note to Anki.
-    Raises ValueError if a cloze cannot be created for any of the sentences.
-    """
-    clean_word = _remove_cloze_syntax(word)
-    clean_context = _remove_cloze_syntax(context)
-    deck_name = get_current_deck_name()
-    model_name = getattr(config, "ANKI_MODEL_NAME_CLOZE", f"{config.ANKI_MODEL_NAME} (Cloze)")
-
-    cloze_sentences = [_create_cloze_sentence(word, s) for s in sentences]
-
-    # Check if at least one sentence has a cloze
-    if not any('{{c1::' in s for s in cloze_sentences):
-        raise ValueError(f"Failed to create a cloze for '{word}' in any of the provided sentences.")
-
-    # Generate distractors for multiple choice
-    distractors = []
-    if all_words and len(all_words) > 1:
-        potential_distractors = [w for w in all_words if w.lower() != word.lower()]
-        num_to_sample = min(2, len(potential_distractors))
-        if num_to_sample > 0:
-            distractors = random.sample(potential_distractors, num_to_sample)
-    
-    placeholders = ['option2', 'option3']
-    for i in range(2 - len(distractors)):
-        distractors.append(placeholders[i])
-    
-    options_list = [word] + distractors
-    random.shuffle(options_list)
-    options = f"({', '.join(options_list)})"
-
-    note = {
-        "deckName": deck_name,
-        "modelName": model_name,
-        "fields": {
-            "Word": clean_word,
-            "Sentence1": cloze_sentences[0] if len(cloze_sentences) > 0 else '',
-            "Sentence2": cloze_sentences[1] if len(cloze_sentences) > 1 else '',
-            "Sentence3": cloze_sentences[2] if len(cloze_sentences) > 2 else '',
-            "Context": clean_context or "",
-            "Options": options,
-        },
-        "options": {
-            "allowDuplicate": False,
-            "duplicateScope": "deck",
-            "duplicateScopeOptions": {"deckName": deck_name, "checkChildren": True, "checkAllModels": False}
-        },
-        "tags": tags or [],
-    }
-    try:
-        _ac_request("addNote", {"note": note})
-        print(f"Added Cloze note for '{word}'.")
-    except AnkiConnectError as e:
-        if "duplicate" in str(e):
-             print(f"Cloze note for '{word}' already exists.")
-        else:
-            print(f"Failed to add Cloze note for '{word}': {e}")
-            raise
+        print(f"Failed to add note for '{word}': {e}")
+        raise
