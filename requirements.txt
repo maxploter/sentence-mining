@@ -4,3 +4,5 @@ python-dotenv
 tenacity
 requests>=2.25.0,<3.0.0
 ruff
+pytest
+pytest-mock
