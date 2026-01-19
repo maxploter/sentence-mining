@@ -88,10 +88,12 @@ def run_process(
         
         clean_word = llm_service.strip_markdown_formatting(word)
 
-        if not sentence1:
-            logging.warning(f"Item for '{clean_word}' (ID: {item.id}) has no context sentence. Skipping.")
-            task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
-            continue
+        # Remove the block that skips items without a sentence.
+        # The AnkiService will now handle the case where only an LLM-generated sentence is available.
+        # if not sentence1:
+        #     logging.warning(f"Item for '{clean_word}' (ID: {item.id}) has no context sentence. Skipping.")
+        #     task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+        #     continue
 
         logging.info(f"Processing word: '{clean_word}'")
 

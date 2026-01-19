@@ -1,10 +1,11 @@
 from typing import List
+
 import config
-import logging # Import the logging module
 from datasources.sentence_source import SentenceSource
-from repositories.todoist_repository import TodoistRepository
 from domain.models import SourceSentence
 from domain.task_completion_handler import TaskCompletionHandler
+from repositories.todoist_repository import TodoistRepository
+
 
 class TodoistSentenceSource(SentenceSource):
     """
@@ -23,10 +24,6 @@ class TodoistSentenceSource(SentenceSource):
         
         sentences = []
         for task in todoist_tasks:
-            # Skip tasks without a description (which we use as the sentence)
-            if not task.description:
-                logging.warning(f"Skipping Todoist task '{task.content}' due to empty description.")
-                continue
 
             # In this setup, the task.content is the raw text to parse the word from
             # and task.description is the full sentence context.

@@ -1,6 +1,7 @@
 import re
-import logging # Import logging
+
 from repositories.llm_repository import LLMRepository
+
 
 class LLMService:
     def __init__(self, llm_repository: LLMRepository):
@@ -24,13 +25,24 @@ class LLMService:
         Gets the definition of a word using an LLM, based on the context.
         """
         system_prompt = "You are a helpful assistant that provides concise definitions."
-        user_prompt = f"""
-        Please provide a concise definition for the word or phrase "{word}".
+
+        context_block = ""
+        if context:
+          context_block = f"""
         The word appeared in the following context:
         ---
         {context}
         ---
         Based on this context, what is the most likely meaning of "{word}"?
+            """
+        else:
+          context_block = f"""
+        What is the most likely meaning of "{word}"?
+            """
+
+        user_prompt = f"""
+        Please provide a concise definition for the word or phrase "{word}".
+        {context_block}
         Provide only the definition, without any extra text or explanations.
         """
         return self.llm_repository.ask(system_prompt, user_prompt)
@@ -40,11 +52,17 @@ class LLMService:
         Generates one example sentence for a word.
         """
         system_prompt = "You are a helpful assistant that generates an example sentence."
+
+        context_block = ""
+        if context:
+          context_block = f"""
+        It appeared in the original context: "{context}".
+            """
+
         user_prompt = f"""
         The word is "{word}".
         Its definition is: "{definition}".
-        It appeared in the original context: "{context}".
-
+        {context_block}
         Please generate one new, distinct sentence using the word "{word}".
         The sentence should be easy to understand and a.
         Return only the sentence.

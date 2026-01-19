@@ -131,7 +131,7 @@ class AnkiService:
 
     def add_note(self, word, definition, sentence1, sentence2, context, tags=None):
         """
-        Adds a single cloze note with two sentences to Anki.
+        Adds a single cloze note to Anki, intelligently handling one or two sentences.
         """
         clean_word = self._remove_cloze_syntax(word)
         clean_context = self._remove_cloze_syntax(context)
@@ -144,14 +144,37 @@ class AnkiService:
             logging.info(f"Note for '{word}' already exists. Skipping.")
             return
 
-        try:
+        cloze1 = None
+        if sentence1:
+          try:
             cloze1 = self._create_cloze_sentence(word, sentence1, 1)
-            cloze2 = self._create_cloze_sentence(word, sentence2, 1)
-        except ValueError as e:
-            logging.error(f"Error creating cloze sentences for '{word}': {e}")
+          except ValueError as e:
+            logging.error(f"Error creating cloze sentence 1 for '{word}': {e}")
             raise
 
-        full_text = f"{cloze1}<br>{cloze2}"
+        cloze2 = None
+        if sentence2:  # Only create cloze for sentence2 if it exists
+          try:
+            # Note: For simplicity, the cloze number remains 1. If multiple cloze *types*
+            # were desired within a single sentence (e.g., {{c1::...}} and {{c2::...}}),
+            # this would need more complex logic. For now, we assume one cloze per sentence.
+            cloze2 = self._create_cloze_sentence(word, sentence2, 1)
+          except ValueError as e:
+            logging.error(f"Error creating cloze sentence 2 for '{word}': {e}")
+            raise
+
+        # Construct full_text based on available cloze sentences
+        full_text = ""
+        if cloze1 and cloze2:
+          full_text = f"{cloze1}<br>{cloze2}"
+        elif cloze1:
+          full_text = cloze1
+        elif cloze2:  # Prioritize LLM generated sentence if no original sentence
+          full_text = cloze2
+        else:
+          # Handle case where no sentences are available or could be processed
+          logging.warning(f"No valid sentences found for word '{word}'. Text field will be empty.")
+          full_text = ""  # Or raise an error if this is not allowed
 
         note = {
             "deckName": deck_name,
