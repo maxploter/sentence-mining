@@ -6,36 +6,43 @@ import datetime
 sys.path.insert(0, sys.path[0] + '/..')
 
 from main import run_process
-from todoist_service import TodoistService
 from llm_service import LLMService
 from anki_service import AnkiService
+from word_processor import WordProcessor # Updated import
+from domain.models import SourceSentence
+from domain.task_completion_handler import TaskCompletionHandler # Import the interface
+
 
 def test_end_to_end_flow(mocker):
     """
-    End-to-end test for the main script, mocking the repository layer.
+    End-to-end test for the main script, mocking the repository and data source layers.
     """
     # 1. Mock Repositories (the external boundary of the app)
-    mock_todoist_repo = MagicMock()
     mock_llm_repo = MagicMock()
     mock_anki_repo = MagicMock()
 
-    # 2. Setup mock return values
+    # 2. Mock Data Source and Task Completion Handler
+    mock_sentence_source = MagicMock()
+    mock_task_completion_handler = MagicMock(spec=TaskCompletionHandler) # Mock an instance of the ABC
+
+    # 3. Setup mock return values
     # Mock datetime to control the tags
     mock_fixed_datetime = datetime.datetime(2026, 1, 18)
     mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=mock_fixed_datetime)))
 
-    # Mock Todoist tasks
-    mock_task_1 = MagicMock()
-    mock_task_1.id = '123'
-    mock_task_1.content = 'test word'
-    mock_task_1.description = 'This sentence contains the test word.'
+    # Mock SourceSentence items returned by the data source
+    mock_mined_sentence_1 = SourceSentence(
+        id='123',
+        source_text='test word',
+        sentence='This sentence contains the test word.'
+    )
 
-    mock_task_2 = MagicMock()
-    mock_task_2.id = '456'
-    mock_task_2.content = 'english headspace'
-    mock_task_2.description = 'So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.'
-
-    mock_todoist_repo.get_project_tasks.return_value = [mock_task_1, mock_task_2]
+    mock_mined_sentence_2 = SourceSentence(
+        id='456',
+        source_text='english headspace',
+        sentence='So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.'
+    )
+    mock_sentence_source.fetch_sentences.return_value = [mock_mined_sentence_1, mock_mined_sentence_2]
 
     # Mock LLM calls
     mock_llm_repo.ask.side_effect=[
@@ -45,39 +52,77 @@ def test_end_to_end_flow(mocker):
         'A generated sentence for headspace.' # generated sentence
     ]
 
-    # Mock Anki calls
+    # Mock Anki calls (for findNotes and addNote)
     mock_anki_repo.request.side_effect = lambda action, params=None: [] if action == 'findNotes' else None
 
-    # 3. Instantiate REAL services with MOCK repositories
+    # 4. Instantiate REAL services with MOCK repositories and data source
+    word_processor = WordProcessor() # WordProcessor is a pure class, no need to mock
     llm_service = LLMService(mock_llm_repo)
-    todoist_service = TodoistService(mock_todoist_repo)
-    anki_service = AnkiService(mock_anki_repo, llm_service)
+    anki_service = AnkiService(mock_anki_repo, llm_service) # AnkiService needs LLMService
 
-    # 4. Run the main application logic
-    run_process(todoist_service, llm_service, anki_service)
+    # 5. Run the main application logic
+    run_process(
+        mock_sentence_source,
+        word_processor,
+        llm_service,
+        anki_service,
+        mock_task_completion_handler,
+    )
 
-    # 5. Assertions
-    # Assert that the external-facing repositories were called correctly
+    # 6. Assertions
+    # Assert that the external-facing repositories and handlers were called correctly
     expected_tags = ['Year::2026', 'Month::01']
     
     # Verify Anki repository calls
-    add_note_calls = mock_anki_repo.request.call_args_list
-    added_notes = [
-        c.args[1]['note'] for c in add_note_calls 
+    add_note_calls = [
+        c.args[1]['note'] for c in mock_anki_repo.request.call_args_list 
         if c.args[0] == 'addNote'
     ]
-    assert len(added_notes) == 2
+    assert len(add_note_calls) == 2
 
-    note1 = next((n for n in added_notes if n['fields']['Word'] == 'test word'), None)
+    note1 = next((n for n in add_note_calls if n['fields']['Word'] == 'test word'), None)
     assert note1 is not None
     assert note1['fields']['Text'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c2::test word}}.'
+    assert note1['fields']['Definition'] == 'a word for testing'
+    assert note1['fields']['Context'] == 'test word'
+    assert note1['tags'] == expected_tags
 
-    note2 = next((n for n in added_notes if n['fields']['Word'] == 'headspace'), None)
+    note2 = next((n for n in add_note_calls if n['fields']['Word'] == 'headspace'), None)
     assert note2 is not None
     assert 'I have the {{c1::headspace}} to muse' in note2['fields']['Text']
     assert 'A generated sentence for {{c2::headspace}}.' in note2['fields']['Text']
+    assert note2['fields']['Definition'] == 'the mental space for something'
+    assert note2['fields']['Context'] == 'english headspace'
+    assert note2['tags'] == expected_tags
 
-    # Verify Todoist repository calls
-    mock_todoist_repo.get_project_tasks.assert_called_once_with('english-words')
+    # Verify LLM repository calls (get_definition and generate_sentence)
+    expected_llm_ask_calls = [
+        # Definition for 'test word'
+        call(
+            'You are a helpful assistant that provides concise definitions.',
+            '\n        Please provide a concise definition for the word or phrase "test word".\n        The word appeared in the following context:\n        ---\n        This sentence contains the test word.\n        ---\n        Based on this context, what is the most likely meaning of "test word"?\n        Provide only the definition, without any extra text or explanations.\n        '
+        ),
+        # Generated sentence for 'test word'
+        call(
+            'You are a helpful assistant that generates an example sentence.',
+            '\n        The word is "test word".\n        Its definition is: "a word for testing".\n        It appeared in the original context: "This sentence contains the test word.".\n\n        Please generate one new, distinct sentence using the word "test word".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        '
+        ),
+        # Definition for 'headspace'
+        call(
+            'You are a helpful assistant that provides concise definitions.',
+            '\n        Please provide a concise definition for the word or phrase "headspace".\n        The word appeared in the following context:\n        ---\n        So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.\n        ---\n        Based on this context, what is the most likely meaning of "headspace"?\n        Provide only the definition, without any extra text or explanations.\n        '
+        ),
+        # Generated sentence for 'headspace'
+        call(
+            'You are a helpful assistant that generates an example sentence.',
+            '\n        The word is "headspace".\n        Its definition is: "the mental space for something".\n        It appeared in the original context: "So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.".\n\n        Please generate one new, distinct sentence using the word "headspace".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        '
+        ),
+    ]
+    mock_llm_repo.ask.assert_has_calls(expected_llm_ask_calls, any_order=True)
+
+    # Verify SentenceSource was called
+    mock_sentence_source.fetch_sentences.assert_called_once()
+
+    # Verify TaskCompletionHandler calls
     complete_task_calls = [call('123'), call('456')]
-    mock_todoist_repo.complete_task.assert_has_calls(complete_task_calls, any_order=True)
+    mock_task_completion_handler.complete_task.assert_has_calls(complete_task_calls, any_order=True)
