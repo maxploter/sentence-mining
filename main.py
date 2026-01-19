@@ -63,7 +63,6 @@ def run_process(
 
         word = word_processor.extract_word(item.entry_text)
         sentence1 = item.sentence
-        source_context = item.entry_text
 
         # Fallback logic for word extraction if WordProcessor doesn't find it explicitly.
         # This part of the logic needs to ensure it gets a valid word for processing.
@@ -130,7 +129,6 @@ def run_process(
                 definition,
                 sentence1,
                 sentence2,
-                source_context,
                 tags=final_tags_list # Pass combined tags
             )
         except ValueError as e:

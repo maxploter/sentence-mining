@@ -128,7 +128,6 @@ def test_end_to_end_flow(mocker):
     assert note1['fields'][
              'Text'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c1::test word}}.'
     assert note1['fields']['Definition'] == 'a word for testing'
-    assert note1['fields']['Context'] == 'test word'
 
     # Combined tags for note 1
     expected_note1_tags = set(expected_script_tags)
@@ -142,7 +141,6 @@ def test_end_to_end_flow(mocker):
     assert 'I have the {{c1::headspace}} to muse' in note2['fields']['Text']
     assert 'A generated sentence for {{c1::headspace}}.' in note2['fields']['Text']
     assert note2['fields']['Definition'] == 'the mental space for something'
-    assert note2['fields']['Context'] == 'english headspace'
 
     # Combined tags for note 2
     expected_note2_tags = set(expected_script_tags)
@@ -157,7 +155,6 @@ def test_end_to_end_flow(mocker):
     assert note3['fields'][
              'Text'] == 'The beauty of a sunset is often {{c1::ephemeral}}.<br>A fleeting moment can be quite {{c1::ephemeral}}.'
     assert note3['fields']['Definition'] == 'lasting for a very short time'
-    assert note3['fields']['Context'] == 'english ephemeral'
 
     # Combined tags for note 3
     expected_note3_tags = set(expected_script_tags)
@@ -170,7 +167,6 @@ def test_end_to_end_flow(mocker):
     assert note4 is not None
     assert note4['fields']['Text'] == 'This sentence is generated for the word {{c1::wordonly}}.'
     assert note4['fields']['Definition'] == 'a word used for testing when no original sentence is provided'
-    assert note4['fields']['Context'] == 'wordonly'
 
     # Combined tags for note 4
     expected_note4_tags = set(expected_script_tags)

@@ -44,7 +44,6 @@ class AnkiService:
                     "Word",       # The target word
                     "Text",       # The full text with cloze deletions
                     "Definition", # The word's definition
-                    "Context",    # Original context/source
                 ],
                 "css": css,
                 "isCloze": True,
@@ -54,8 +53,7 @@ class AnkiService:
                         "Front": "{{cloze:Text}}",
                         "Back": "{{cloze:Text}}<hr id=answer>"
                                 "<b>{{Word}}</b><br><br>"
-                                "{{Definition}}<br><br>"
-                                "<em>Source: {{Context}}</em>"
+                                "{{Definition}}",
                     }
                 ],
             }
@@ -129,19 +127,20 @@ class AnkiService:
 
         return cloze_sentence
 
-    def add_note(self, word, definition, sentence1, sentence2, context, tags=None):
+    def add_note(self, word, definition, sentence1, sentence2, tags=None):
         """
         Adds a single cloze note to Anki, intelligently handling one or two sentences.
         """
         clean_word = self._remove_cloze_syntax(word)
-        clean_context = self._remove_cloze_syntax(context)
+        # Sanitize definition for the query by removing quotes
+        clean_definition = definition.replace('"', '')
         deck_name = self._get_current_deck_name()
         model_name = config.ANKI_MODEL_NAME
 
-        query = f'"deck:{deck_name}" "note:{model_name}" "Word:{clean_word}"'
+        query = f'"deck:{deck_name}" "note:{model_name}" "Word:{clean_word}" "Definition:{clean_definition}"'
         duplicate_notes = self.repository.request("findNotes", {"query": query})
         if duplicate_notes:
-            logging.info(f"Note for '{word}' already exists. Skipping.")
+            logging.info(f"Note for '{word}' with the same definition already exists. Skipping.")
             return
 
         cloze1 = None
@@ -183,7 +182,6 @@ class AnkiService:
                 "Word": clean_word,
                 "Text": full_text,
                 "Definition": definition,
-                "Context": clean_context or "",
             },
             "options": {"allowDuplicate": False},
             "tags": tags or [],
