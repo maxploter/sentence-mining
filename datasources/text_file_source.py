@@ -1,5 +1,6 @@
 import re
 from typing import List
+import logging # Import the logging module
 from datasources.sentence_source import SentenceSource
 from domain.models import SourceSentence
 from datasources.csv_source import NoOpTaskCompletionHandler # Import from csv_source
@@ -31,11 +32,12 @@ class TextFileSentenceSource(SentenceSource):
                         SourceSentence(
                             id=f"textfile-{i+1}",
                             entry_text=clean_line,
-                            sentence=sentence_without_asterisks
+                            sentence=sentence_without_asterisks,
+                            tags=["Type::TextFile"] # Add default tag
                         )
                     )
         except FileNotFoundError:
-            print(f"Error: Text file not found at {self.file_path}")
+            logging.error(f"Error: Text file not found at {self.file_path}")
         except Exception as e:
-            print(f"Error reading text file {self.file_path}: {e}")
+            logging.error(f"Error reading text file {self.file_path}: {e}")
         return sentences

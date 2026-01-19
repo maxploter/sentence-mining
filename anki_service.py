@@ -1,7 +1,10 @@
+import logging  # Import the logging module
 import re
+
 import config
 from llm_service import LLMService
 from repositories.anki_repository import AnkiRepository, AnkiConnectError
+
 
 class AnkiService:
     def __init__(self, anki_repository: AnkiRepository, llm_service: LLMService):
@@ -16,10 +19,12 @@ class AnkiService:
         """
         Ensure the cloze model for sentence mining exists in Anki.
         """
+        logging.info(f"Ensuring Anki model '{config.ANKI_MODEL_NAME}' exists.")
         model_name = config.ANKI_MODEL_NAME
         names = self.repository.request("modelNames") or []
 
         if model_name not in names:
+            logging.info(f"Anki model '{model_name}' not found. Creating it.")
             css = """
             .card {
              font-family: arial;
@@ -55,22 +60,33 @@ class AnkiService:
                 ],
             }
             self.repository.request("createModel", params)
+            logging.info(f"Anki model '{model_name}' created successfully.")
+        else:
+            logging.info(f"Anki model '{model_name}' already exists.")
 
     def _ensure_deck(self, deck_name: str):
+        logging.info(f"Ensuring Anki deck '{deck_name}' exists.")
         names = self.repository.request("deckNames") or []
         if deck_name not in names:
+            logging.info(f"Anki deck '{deck_name}' not found. Creating it.")
             self.repository.request("createDeck", {"deck": deck_name})
+            logging.info(f"Anki deck '{deck_name}' created successfully.")
+        else:
+            logging.info(f"Anki deck '{deck_name}' already exists.")
 
     def initialize_anki(self):
         """
         Checks connection to AnkiConnect and ensures deck and model exist.
         """
         try:
+            logging.info("Checking AnkiConnect connection...")
             self.repository.request("version")
+            logging.info("AnkiConnect connection successful.")
             deck_name = self._get_current_deck_name()
             self._ensure_deck(deck_name)
             self._ensure_model()
         except AnkiConnectError as e:
+            logging.error(f"AnkiConnect is not available: {e}")
             raise ConnectionError(f"AnkiConnect is not available: {e}")
 
     @staticmethod
@@ -97,15 +113,19 @@ class AnkiService:
             cloze_sentence, count = re.subn(pattern_plain, cloze_tag, normalized_sentence, flags=re.IGNORECASE)
 
         if count == 0:
-            print(f"Regex failed for '{word}'. Trying LLM to create cloze...")
+            logging.info(f"Regex failed to create cloze for '{word}'. Trying LLM...")
             llm_cloze = self.llm_service.create_cloze_with_llm(word, sentence)
             if '{{c1::' in llm_cloze:
                 cloze_sentence = llm_cloze.replace('{{c1::', f'{{{{c{cloze_number}::')
             else:
                  cloze_sentence = sentence
+                 logging.warning(f"LLM also failed to create cloze for '{word}' in sentence: '{sentence}'. Falling back to original sentence.")
+
 
         if f"c{cloze_number}::" not in cloze_sentence:
-            raise ValueError(f"Failed to create a cloze for '{word}' in sentence: '{sentence}'")
+            error_msg = f"Failed to create a cloze for '{word}' in sentence: '{sentence}'"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
 
         return cloze_sentence
 
@@ -121,14 +141,14 @@ class AnkiService:
         query = f'"deck:{deck_name}" "note:{model_name}" "Word:{clean_word}"'
         duplicate_notes = self.repository.request("findNotes", {"query": query})
         if duplicate_notes:
-            print(f"Note for '{word}' already exists. Skipping.")
+            logging.info(f"Note for '{word}' already exists. Skipping.")
             return
 
         try:
             cloze1 = self._create_cloze_sentence(word, sentence1, 1)
-            cloze2 = self._create_cloze_sentence(word, sentence2, 2)
+            cloze2 = self._create_cloze_sentence(word, sentence2, 1)
         except ValueError as e:
-            print(e)
+            logging.error(f"Error creating cloze sentences for '{word}': {e}")
             raise
 
         full_text = f"{cloze1}<br>{cloze2}"
@@ -148,7 +168,7 @@ class AnkiService:
         
         try:
             self.repository.request("addNote", {"note": note})
-            print(f"Added note for '{word}'.")
+            logging.info(f"Added note for '{word}'.")
         except AnkiConnectError as e:
-            print(f"Failed to add note for '{word}': {e}")
+            logging.error(f"Failed to add note for '{word}': {e}")
             raise

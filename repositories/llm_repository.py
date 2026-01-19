@@ -1,5 +1,6 @@
 import openai
 import config
+import logging # Import the logging module
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 
 class LLMRepository:
@@ -29,5 +30,5 @@ class LLMRepository:
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            print(f"Error communicating with Nebius: {e}")
+            logging.error(f"Error communicating with Nebius: {e}")
             raise

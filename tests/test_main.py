@@ -1,12 +1,11 @@
+import datetime
 import sys
 from unittest.mock import MagicMock, call
-import datetime
-import argparse # Import argparse
 
 # Add the project root to the Python path
 sys.path.insert(0, sys.path[0] + '/..')
 
-from main import run_process, main as main_func # Rename main to main_func to avoid conflict
+from main import main as main_func # Rename main to main_func to avoid conflict
 from llm_service import LLMService
 from anki_service import AnkiService
 from word_processor import WordProcessor 
@@ -23,6 +22,7 @@ def test_end_to_end_flow(mocker):
     mock_args.source = 'todoist' # Test with todoist source by default
     mock_args.csv_file = 'words.csv' 
     mock_args.text_file = 'sentences.txt' # Default value for new text_file source
+    mock_args.tags = 'CLI::Tag1,CLI::Tag2' # Simulate CLI tags
     mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
 
     # 1. Mock Repositories (the external boundary of the app)
@@ -43,13 +43,15 @@ def test_end_to_end_flow(mocker):
     mock_mined_sentence_1 = SourceSentence(
         id='123',
         entry_text='test word',
-        sentence='This sentence contains the test word.'
+        sentence='This sentence contains the test word.',
+        tags=['Source::MockTodoist'] # Tags from data source
     )
 
     mock_mined_sentence_2 = SourceSentence(
         id='456',
         entry_text='english headspace',
-        sentence='So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.'
+        sentence='So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.',
+        tags=['Source::MockCsv', 'Topic::Psychology'] # Tags from data source
     )
     mock_sentence_source.fetch_sentences.return_value = [mock_mined_sentence_1, mock_mined_sentence_2]
 
@@ -86,7 +88,8 @@ def test_end_to_end_flow(mocker):
 
     # 6. Assertions
     # Assert that the external-facing repositories and handlers were called correctly
-    expected_tags = ['Year::2026', 'Month::01']
+    expected_script_tags = ['Year::2026', 'Month::01']
+    expected_cli_tags = ['CLI::Tag1', 'CLI::Tag2']
     
     # Verify Anki repository calls
     add_note_calls = [
@@ -95,20 +98,33 @@ def test_end_to_end_flow(mocker):
     ]
     assert len(add_note_calls) == 2
 
+    # --- Assertions for note 1 ('test word') ---
     note1 = next((n for n in add_note_calls if n['fields']['Word'] == 'test word'), None)
     assert note1 is not None
-    assert note1['fields']['Text'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c2::test word}}.'
+    assert note1['fields'][
+             'Text'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c1::test word}}.'
     assert note1['fields']['Definition'] == 'a word for testing'
     assert note1['fields']['Context'] == 'test word'
-    assert note1['tags'] == expected_tags
+    
+    # Combined tags for note 1
+    expected_note1_tags = set(expected_script_tags)
+    expected_note1_tags.update(['Source::MockTodoist'])
+    expected_note1_tags.update(expected_cli_tags)
+    assert sorted(note1['tags']) == sorted(list(expected_note1_tags))
 
+    # --- Assertions for note 2 ('headspace') ---
     note2 = next((n for n in add_note_calls if n['fields']['Word'] == 'headspace'), None)
     assert note2 is not None
     assert 'I have the {{c1::headspace}} to muse' in note2['fields']['Text']
-    assert 'A generated sentence for {{c2::headspace}}.' in note2['fields']['Text']
+    assert 'A generated sentence for {{c1::headspace}}.' in note2['fields']['Text']
     assert note2['fields']['Definition'] == 'the mental space for something'
     assert note2['fields']['Context'] == 'english headspace'
-    assert note2['tags'] == expected_tags
+
+    # Combined tags for note 2
+    expected_note2_tags = set(expected_script_tags)
+    expected_note2_tags.update(['Source::MockCsv', 'Topic::Psychology'])
+    expected_note2_tags.update(expected_cli_tags)
+    assert sorted(note2['tags']) == sorted(list(expected_note2_tags))
 
     # Verify LLM repository calls (get_definition and generate_sentence)
     expected_llm_ask_calls = [
@@ -141,4 +157,5 @@ def test_end_to_end_flow(mocker):
     # Verify TaskCompletionHandler calls
     complete_task_calls = [call('123'), call('456')]
     mock_task_completion_handler.complete_task.assert_has_calls(complete_task_calls, any_order=True)
+
 

@@ -1,4 +1,5 @@
 import re
+import logging # Import logging
 from repositories.llm_repository import LLMRepository
 
 class LLMService:

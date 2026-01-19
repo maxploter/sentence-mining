@@ -1,5 +1,6 @@
 import csv
 from typing import List
+import logging # Import the logging module
 from datasources.sentence_source import SentenceSource
 from domain.models import SourceSentence
 from domain.task_completion_handler import TaskCompletionHandler
@@ -24,21 +25,28 @@ class CsvSentenceSource(SentenceSource):
                     # Use provided ID or generate one if not present
                     item_id = row.get('id', f"csv-{i+1}") 
 
+                    # Parse optional tags column
+                    item_tags = []
+                    if 'tags' in row and row['tags']:
+                        item_tags.extend([tag.strip() for tag in row['tags'].split(',')])
+                    item_tags.append("Type::CSV") # Add default source type tag
+
                     # Basic validation for required columns
                     if 'entry_text' in row and 'sentence' in row:
                         sentences.append(
                             SourceSentence(
                                 id=item_id,
                                 entry_text=row['entry_text'],
-                                sentence=row['sentence']
+                                sentence=row['sentence'],
+                                tags=item_tags
                             )
                         )
                     else:
-                        print(f"Skipping row in CSV due to missing required columns (entry_text or sentence): {row}")
+                        logging.warning(f"Skipping row in CSV due to missing required columns (entry_text or sentence): {row}")
         except FileNotFoundError:
-            print(f"Error: CSV file not found at {self.file_path}")
+            logging.error(f"Error: CSV file not found at {self.file_path}")
         except Exception as e:
-            print(f"Error reading CSV file {self.file_path}: {e}")
+            logging.error(f"Error reading CSV file {self.file_path}: {e}")
         return sentences
 
 class NoOpTaskCompletionHandler(TaskCompletionHandler):
@@ -47,7 +55,7 @@ class NoOpTaskCompletionHandler(TaskCompletionHandler):
     data sources (like CSV) where there's no external task to complete or label.
     """
     def complete_task(self, task_id: str):
-        print(f"No-op: Task {task_id} would be marked as complete.")
+        logging.info(f"No-op: Task {task_id} would be marked as complete.")
 
     def add_label_to_task(self, task_id: str, label_name: str):
-        print(f"No-op: Label '{label_name}' would be added to task {task_id}.")
+        logging.info(f"No-op: Label '{label_name}' would be added to task {task_id}.")

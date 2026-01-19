@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,8 +10,8 @@ NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY")
 
 # Configuration (can be changed here)
 TODOIST_PROJECT_NAME = "english-words"
-ANKI_DECK_NAME = "english::sentence-mining"
-ANKI_MODEL_NAME = "English Vocabulary Model"
+ANKI_DECK_NAME = "sentence-mining"
+ANKI_MODEL_NAME = "English sentence-mining Model"
 
 # Tag to add to Todoist tasks that fail processing
 TODOIST_ERROR_TAG = os.getenv("TODOIST_ERROR_TAG", "needs_review")

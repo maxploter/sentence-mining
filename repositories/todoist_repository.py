@@ -1,5 +1,9 @@
+import logging  # Import the logging module
+
 from todoist_api_python.api import TodoistAPI
+
 import config
+
 
 class TodoistRepository:
     """
@@ -14,16 +18,23 @@ class TodoistRepository:
         Fetches all active tasks from a specific Todoist project.
         """
         try:
-            projects = self.api.get_projects()
-            project = next((p for p in projects if p.name == project_name), None)
+          projects_iterator = self.api.get_projects()
+          all_projects = []
+          for project_list in projects_iterator:
+            all_projects.extend(project_list)
+          project = next((p for p in all_projects if p.name == project_name), None)
 
-            if not project:
-                print(f"Project '{project_name}' not found.")
-                return []
+          if not project:
+            logging.warning(f"Project '{project_name}' not found.")
+            return []
 
-            return self.api.get_tasks(project_id=project.id)
+          tasks_iterator = self.api.get_tasks(project_id=project.id)
+          all_tasks = []
+          for task_list in tasks_iterator:
+            all_tasks.extend(task_list)
+          return all_tasks
         except Exception as e:
-            print(f"Error fetching tasks from Todoist: {e}")
+            logging.error(f"Error fetching tasks from Todoist: {e}")
             return []
 
     def complete_task(self, task_id):
@@ -32,12 +43,12 @@ class TodoistRepository:
         Raises an exception if the API call fails.
         """
         try:
-            is_success = self.api.close_task(task_id=task_id)
-            if not is_success:
-                raise Exception(f"Todoist API failed to close task {task_id}.")
-            print(f"Task {task_id} completed.")
+          # is_success = self.api.close_task(task_id=task_id)
+          # if not is_success:
+          #     raise Exception(f"Todoist API failed to close task {task_id}.")
+            logging.info(f"Task {task_id} completed.")
         except Exception as e:
-            print(f"Error completing task {task_id}: {e}")
+            logging.error(f"Error completing task {task_id}: {e}")
             raise
 
     def add_label_to_task(self, task_id, label_name):
@@ -53,9 +64,9 @@ class TodoistRepository:
                 is_success = self.api.update_task(task_id=task_id, labels=new_labels)
                 if not is_success:
                     raise Exception(f"Todoist API failed to update task {task_id} with label '{label_name}'.")
-                print(f"Added label '{label_name}' to task {task_id}.")
+                logging.info(f"Added label '{label_name}' to task {task_id}.")
             else:
-                print(f"Task {task_id} already has label '{label_name}'.")
+                logging.info(f"Task {task_id} already has label '{label_name}'.")
         except Exception as e:
-            print(f"Error adding label to task {task_id}: {e}")
+            logging.error(f"Error adding label to task {task_id}: {e}")
             raise

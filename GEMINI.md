@@ -70,40 +70,42 @@ The architecture has evolved to be highly modular and testable, employing a laye
     ```ini
     TODOIST_API_KEY="YOUR_TODOIST_API_KEY"
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
-    
-    # Configure the data source type (default: todoist)
-    # Set to "csv" to use a local CSV file instead of Todoist.
-    # DATA_SOURCE_TYPE="csv" 
     ```
     If `DATA_SOURCE_TYPE` is set to `"csv"`, the script will look for a `words.csv` file in the project's root directory. The `words.csv` file should have the following header and format:
     ```csv
-    id,source_text,sentence
+    id,entry_text,sentence
     unique_id_1,your_word_or_phrase,The full sentence containing your word or phrase.
     unique_id_2,english another_word,Another example sentence.
     ```
     *   `id`: A unique identifier for the entry (e.g., a number, a UUID).
-    *   `source_text`: The text from which the word to be learned will be extracted (e.g., "apple", "english headspace").
+    *   `entry_text`: The text from which the word to be learned will be extracted (e.g., "apple", "english headspace").
     *   `sentence`: The full sentence context for the word.
 
 6.  **Run the Script:**
     Make sure Anki is open and running on your machine, then execute:
     ```bash
-    python main.py [--source <todoist|csv>] [--csv-file <path>]
+    python main.py [--source <todoist|csv|text_file>] [--csv-file <path>] [--text-file <path>] [--tags <tag1,tag2,...>]
     ```
-    *   `--source`: Specifies the data source type. Can be `todoist` (default) or `csv`.
-    *   `--csv-file`: Required if `--source csv` is used. Specifies the path to your CSV file (e.g., `words.csv`). Defaults to `words.csv` in the root if not specified and `--source csv` is active.
+    *   `--source`: Specifies the data source type. Can be `todoist` (default), `csv`, or `text_file`.
+    *   `--csv-file`: Required if `--source csv` is used. Specifies the path to your CSV file (e.g., `words.csv`).
+    *   `--text-file`: Required if `--source text_file` is used. Specifies the path to your plain text file (e.g., `sentences.txt`).
+    *   `--tags` (`-t`): Accepts a comma-separated list of additional tags to apply to all generated Anki notes in the current run (e.g., `--tags "Topic::Literature,Critical"`). These tags will be combined with any tags provided by the data source.
 
     **Examples:**
     *   **Using Todoist (default):**
         ```bash
         python main.py
         ```
-    *   **Using CSV file:**
+    *   **Using CSV file with batch tags:**
         ```bash
-        python main.py --source csv --csv-file my_words.csv
+        python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History"
+        ```
+    *   **Using a plain text file:**
+        ```bash
+        python main.py --source text_file --text-file my_sentences.txt --tags "Type::Reading,Functional::NewWords"
         ```
     
-    The script will generate new notes in the master deck specified in `config.py` (by default `english::sentence-mining`) and tag them with the current date. Command-line arguments will override the `DATA_SOURCE_TYPE` setting in your `.env` file.
+    The script will generate new notes in the master deck specified in `config.py` (by default `english::sentence-mining`) and tag them with the current date. Command-line arguments will override the default source type.
 
 ## Development Conventions
 
@@ -111,10 +113,15 @@ The architecture has evolved to be highly modular and testable, employing a laye
     *   **Domain Layer (`domain/`)**: Contains core business entities (`SourceSentence`) and interfaces (`SentenceSource`, `TaskCompletionHandler`) that define the application's vocabulary and contracts, independent of implementation details.
     *   **Repositories Layer (`repositories/`)**: Abstracts away the details of external APIs (Todoist, Nebius AI, AnkiConnect). These are thin wrappers around external libraries, handling API calls and error retry logic.
     *   **Service Layer (`llm_service.py`, `anki_service.py`, `word_processor.py`)**: Encapsulates the application's business logic. Services operate on domain models and depend on repositories and other services via **Dependency Injection**.
-    *   **Data Sources Layer (`datasources/`)**: Implements the `SentenceSource` and `TaskCompletionHandler` interfaces. These components are responsible for fetching raw data from specific sources (e.g., Todoist, CSV) and transforming it into domain models.
+    *   **Data Sources Layer (`datasources/`)**: Implements the `SentenceSource` and `TaskCompletionHandler` interfaces. These components are responsible for fetching raw data from specific sources (e.g., Todoist, CSV, Text files) and transforming it into domain models.
     *   **Composition Root (`main.py`)**: Responsible for wiring up all the dependencies (repositories, services, data sources) based on configuration, and executing the main application flow.
 *   **Dependency Injection:** Dependencies are passed into constructors of classes (services, data sources) rather than being created internally. This makes components highly decoupled and significantly improves testability, as mock implementations can be easily injected during testing.
-*   **Configuration:** Application settings (like project names, data source type) and secrets are managed in `config.py`. Secrets are loaded from a `.env` file, which is ignored by version control.
+*   **Tagging System:** The application implements a flexible tagging system for Anki notes, combining tags from multiple sources:
+    *   **Script-Generated**: Automatically adds `Year::YYYY` and `Month::MM` tags based on the current date.
+    *   **Data Source-Provided**: Tags can be extracted from the data source itself (e.g., Todoist task labels converted to `TaskLabel::MyLabel`, or `tags` column in CSV files).
+    *   **Command-Line Arguments**: Users can provide additional tags via the `--tags` (`-t`) command-line option.
+    All tags are combined and deduplicated before being added to the Anki note, using Anki's hierarchical tag format (e.g., `Parent::Child`) for better organization.
+*   **Configuration:** Application settings (like project names) and secrets are managed in `config.py`. Secrets are loaded from a `.env` file, which is ignored by version control.
 *   **Error Handling:** The script includes robust error handling, especially for network operations, using the `tenacity` library for automatic retries with exponential backoff. Tasks that fail during processing (e.g., due to an inability to create a cloze) are tagged in Todoist (if Todoist is the source) for manual review.
 *   **Linting:** The project uses `ruff` for code linting to maintain code quality.
 *   **Security:** API keys and other secrets are kept out of the source code by using a `.env` file, which is a standard security best practice.

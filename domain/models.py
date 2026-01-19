@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 @dataclass
 class SourceSentence:
@@ -9,3 +10,4 @@ class SourceSentence:
     id: str
     entry_text: str
     sentence: str
+    tags: Optional[List[str]] = field(default_factory=list)
