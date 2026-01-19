@@ -85,12 +85,25 @@ The architecture has evolved to be highly modular and testable, employing a laye
     *   `source_text`: The text from which the word to be learned will be extracted (e.g., "apple", "english headspace").
     *   `sentence`: The full sentence context for the word.
 
-5.  **Run the Script:**
+6.  **Run the Script:**
     Make sure Anki is open and running on your machine, then execute:
     ```bash
-    python main.py
+    python main.py [--source <todoist|csv>] [--csv-file <path>]
     ```
-    The script will generate new notes in the master deck specified in `config.py` (by default `english::sentence-mining`) and tag them with the current date.
+    *   `--source`: Specifies the data source type. Can be `todoist` (default) or `csv`.
+    *   `--csv-file`: Required if `--source csv` is used. Specifies the path to your CSV file (e.g., `words.csv`). Defaults to `words.csv` in the root if not specified and `--source csv` is active.
+
+    **Examples:**
+    *   **Using Todoist (default):**
+        ```bash
+        python main.py
+        ```
+    *   **Using CSV file:**
+        ```bash
+        python main.py --source csv --csv-file my_words.csv
+        ```
+    
+    The script will generate new notes in the master deck specified in `config.py` (by default `english::sentence-mining`) and tag them with the current date. Command-line arguments will override the `DATA_SOURCE_TYPE` setting in your `.env` file.
 
 ## Development Conventions
 

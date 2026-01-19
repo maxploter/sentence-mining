@@ -7,5 +7,5 @@ class SourceSentence:
     This is an internal representation, decoupled from any specific data source.
     """
     id: str
-    source_text: str
+    entry_text: str
     sentence: str

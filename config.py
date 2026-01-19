@@ -17,7 +17,6 @@ TODOIST_ERROR_TAG = os.getenv("TODOIST_ERROR_TAG", "needs_review")
 
 # AnkiConnect integration
 ANKICONNECT_URL = os.getenv("ANKICONNECT_URL", "http://localhost:8765")
-DATA_SOURCE_TYPE = os.getenv("DATA_SOURCE_TYPE", "todoist")
 
 # AnkiConnect retry settings
 ANKICONNECT_TIMEOUT = int(os.getenv("ANKICONNECT_TIMEOUT", "20"))

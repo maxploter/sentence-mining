@@ -7,7 +7,7 @@ from domain.task_completion_handler import TaskCompletionHandler
 class CsvSentenceSource(SentenceSource):
     """
     A SentenceSource implementation that fetches sentences from a CSV file.
-    The CSV file is expected to have 'id', 'source_text', and 'sentence' columns.
+    The CSV file is expected to have 'id', 'entry_text', and 'sentence' columns.
     """
     def __init__(self, file_path: str):
         self.file_path = file_path
@@ -20,18 +20,21 @@ class CsvSentenceSource(SentenceSource):
         try:
             with open(self.file_path, mode='r', newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
-                for row in reader:
+                for i, row in enumerate(reader):
+                    # Use provided ID or generate one if not present
+                    item_id = row.get('id', f"csv-{i+1}") 
+
                     # Basic validation for required columns
-                    if 'id' in row and 'source_text' in row and 'sentence' in row:
+                    if 'entry_text' in row and 'sentence' in row:
                         sentences.append(
                             SourceSentence(
-                                id=row['id'],
-                                source_text=row['source_text'],
+                                id=item_id,
+                                entry_text=row['entry_text'],
                                 sentence=row['sentence']
                             )
                         )
                     else:
-                        print(f"Skipping row in CSV due to missing required columns: {row}")
+                        print(f"Skipping row in CSV due to missing required columns (entry_text or sentence): {row}")
         except FileNotFoundError:
             print(f"Error: CSV file not found at {self.file_path}")
         except Exception as e:

@@ -1,0 +1,3 @@
+The quick brown **fox** jumps over the lazy dog.
+The **sun** rises in the east.
+I love to eat fresh **apples** every day.

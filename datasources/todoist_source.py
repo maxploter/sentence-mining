@@ -32,7 +32,7 @@ class TodoistSentenceSource(SentenceSource):
             sentences.append(
                 SourceSentence(
                     id=task.id,
-                    source_text=task.content,
+                    entry_text=task.content,
                     sentence=task.description
                 )
             )

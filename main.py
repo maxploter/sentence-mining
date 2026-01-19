@@ -1,8 +1,9 @@
 import datetime
 import config
+import argparse 
 from llm_service import LLMService
 from anki_service import AnkiService
-from word_processor import WordProcessor # Renamed from todoist_service
+from word_processor import WordProcessor 
 
 # Import repositories
 from repositories.todoist_repository import TodoistRepository
@@ -13,6 +14,7 @@ from repositories.anki_repository import AnkiRepository
 from datasources.sentence_source import SentenceSource
 from datasources.todoist_source import TodoistSentenceSource, TodoistTaskCompletionHandler
 from datasources.csv_source import CsvSentenceSource, NoOpTaskCompletionHandler
+from datasources.text_file_source import TextFileSentenceSource # Import the new text file source
 from domain.task_completion_handler import TaskCompletionHandler
 
 
@@ -49,21 +51,22 @@ def run_process(
 
     # 3. Process each sentence
     for item in mined_sentences:
-        print(f"--- Processing item: {item.source_text} ---")
+        print(f"--- Processing item: {item.entry_text} ---")
 
-        word = word_processor.extract_word(item.source_text)
+        word = word_processor.extract_word(item.entry_text)
         sentence1 = item.sentence
-        source_context = item.source_text
+        source_context = item.entry_text
 
         if not word:
-            # This case should ideally be handled by WordProcessor or input validation
-            # but as a fallback, we skip if word extraction fails.
-            print(f"Could not extract word from '{item.source_text}'. Skipping.")
+            # Fallback for when word is not found by WordProcessor
+            # The current WordProcessor should always find a word if **word** is present
+            # or if it matches "english: word" pattern, otherwise it returns the whole entry_text.
+            # This 'if not word' block might need refinement based on exact WordProcessor behavior.
+            print(f"Could not extract word from '{item.entry_text}'. Skipping.")
             task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
             continue
         
         # Note: strip_markdown_formatting is a static method of LLMService
-        # it can be called directly, but we pass llm_service instance
         clean_word = llm_service.strip_markdown_formatting(word)
 
         if not sentence1:
@@ -131,6 +134,28 @@ def main():
     Composition root of the application.
     Initializes repositories, services, data sources, and runs the main process.
     """
+    parser = argparse.ArgumentParser(description="Create Anki flashcards from various sources.")
+    parser.add_argument(
+        '--source',
+        type=str,
+        choices=['todoist', 'csv', 'text_file'], # Added 'text_file'
+        default='todoist', # Default to 'todoist' if --source is not provided
+        help='Specify the data source type (e.g., todoist, csv, text_file).'
+    )
+    parser.add_argument(
+        '--csv-file',
+        type=str,
+        default='words.csv', # Default CSV file name
+        help='Specify the path to the CSV file if --source csv is used.'
+    )
+    parser.add_argument( # New argument for text file
+        '--text-file',
+        type=str,
+        default='sentences.txt', # Default text file name
+        help='Specify the path to the text file if --source text_file is used.'
+    )
+    args = parser.parse_args()
+
     # 0. Initialize Repositories (infrastructure layer)
     todoist_repo = TodoistRepository()
     llm_repo = LLMRepository()
@@ -142,19 +167,22 @@ def main():
     # AnkiService needs both AnkiRepository and LLMService for cloze fallback
     anki_service = AnkiService(anki_repo, llm_service) 
 
-    # 2. Initialize SentenceSource and TaskCompletionHandler (data source layer)
+    # 2. Initialize SentenceSource and TaskCompletionHandler based on arguments
     sentence_source: SentenceSource
     task_completion_handler: TaskCompletionHandler
 
-    if config.DATA_SOURCE_TYPE == "todoist":
+    if args.source == "todoist":
         sentence_source = TodoistSentenceSource(todoist_repo)
         task_completion_handler = TodoistTaskCompletionHandler(todoist_repo)
-    elif config.DATA_SOURCE_TYPE == "csv":
-        # For CSV, we need to specify the file path
-        sentence_source = CsvSentenceSource("words.csv") # Assuming words.csv in root
+    elif args.source == "csv":
+        sentence_source = CsvSentenceSource(args.csv_file)
+        task_completion_handler = NoOpTaskCompletionHandler()
+    elif args.source == "text_file": # New case for text file
+        sentence_source = TextFileSentenceSource(args.text_file)
         task_completion_handler = NoOpTaskCompletionHandler()
     else:
-        raise ValueError(f"Unknown DATA_SOURCE_TYPE: {config.DATA_SOURCE_TYPE}")
+        # This should ideally not be reached due to argparse 'choices'
+        raise ValueError(f"Unknown DATA_SOURCE_TYPE: {args.source}")
 
     # 3. Run the main process with all wired-up components
     run_process(
