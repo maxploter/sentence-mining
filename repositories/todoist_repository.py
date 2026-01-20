@@ -70,3 +70,14 @@ class TodoistRepository:
         except Exception as e:
             logging.error(f"Error adding label to task {task_id}: {e}")
             raise
+
+    def add_comment_to_task(self, task_id: str, comment_content: str):
+      """
+      Adds a comment to a task in Todoist.
+      """
+      try:
+        self.api.add_comment(task_id=task_id, content=comment_content)
+        logging.info(f"Added comment to task {task_id}.")
+      except Exception as e:
+        logging.error(f"Error adding comment to task {task_id}: {e}")
+        raise

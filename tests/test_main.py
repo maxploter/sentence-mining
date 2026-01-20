@@ -13,6 +13,7 @@ from anki_service import AnkiService
 from word_processor import WordProcessor
 from domain.models import SourceSentence
 from domain.task_completion_handler import TaskCompletionHandler
+from datasources.todoist_source import TodoistTaskCompletionHandler
 
 
 def test_end_to_end_flow(mocker):
@@ -280,16 +281,41 @@ def test_end_to_end_flow(mocker):
     mock_task_completion_handler.complete_task.assert_has_calls(complete_task_calls, any_order=True)
 
 
+def test_todoist_task_completion_handler_on_error(mocker):
+  """
+  Tests the on_error method of TodoistTaskCompletionHandler.
+  It should add an error tag and a comment to the specified Todoist task.
+  """
+  mock_todoist_repo = MagicMock()
+
+  # Instantiate the handler with the mocked repository
+  handler = TodoistTaskCompletionHandler(repository=mock_todoist_repo)
+
+  task_id = '12345'
+  error_message = 'Failed to process word.'
+  exception = ValueError('Test exception')
+
+  handler.on_error(task_id, error_message, exception)
+
+  # Assert that add_label_to_task was called with the correct arguments
+  mock_todoist_repo.add_label_to_task.assert_called_once_with(task_id, 'needs_review')
+
+  # Assert that add_comment_to_task was called with the correct arguments
+  expected_comment = f"Processing Error: {error_message} Details: {exception}"
+  mock_todoist_repo.add_comment_to_task.assert_called_once_with(task_id, expected_comment)
+
+
 @pytest.mark.parametrize("card_status", [
   {"queue": 0, "interval": 0},  # New card
   {"queue": 1, "interval": 1}  # Learning card
 ])
-def test_append_on_new_or_learning_card(mocker, card_status):
+def test_duplicate_handling_disabled_on_error(mocker, card_status):
   """
-  Tests that if a duplicate note is found for a NEW or LEARNING card,
-  the new sentences are appended.
+  Tests that when UPDATE_DUPLICATES is False, a DuplicateNoteError is raised
+  and the task completion handler's on_error is called, regardless of card status.
   """
   # Common setup
+  mocker.patch('config.UPDATE_DUPLICATES', False)  # Explicitly disable duplicate updates
   mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
   mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
   mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
@@ -302,17 +328,34 @@ def test_append_on_new_or_learning_card(mocker, card_status):
   ]))
   mock_task_completion_handler = MagicMock()
 
-  # Mock Anki repo for NEW or LEARNING card duplicate scenario
+  # Mock Anki repo for duplicate scenario
   def anki_repo_side_effect(action, params=None):
-    if action == 'findNotes': return ['1516428352996']
-    if action == 'findCards': return ['card123']
-    if action == 'cardsInfo': return [
-      {'note': '1516428352996', 'queue': card_status['queue'], 'interval': card_status['interval']}]
-    if action == 'notesInfo': return [{'fields': {'AllSentences': {'value': 'Old sentence.'}}}]
+    if action == 'findNotes':
+      return ['1516428352996']
+    elif action == 'findCards':
+      return ['card123']
+    elif action == 'cardsInfo':
+      return [{'note': '1516428352996', 'queue': card_status['queue'], 'interval': card_status['interval']}]
+    elif action == 'notesInfo':
+      return [{'fields': {'AllSentences': {'value': 'Old sentence.'}}}]
+    elif action == 'version':
+      return None
+    elif action == 'deckNames':
+      return []
+    elif action == 'createDeck':
+      return None
+    elif action == 'modelNames':
+      return []
+    elif action == 'createModel':
+      return None
+    elif action == 'updateNoteFields':
+      return None
+    elif action == 'forgetCards':
+      return None
     return None
 
   mock_anki_repo.request.side_effect = anki_repo_side_effect
-
+  mocker.patch('main.AnkiService.initialize_anki')  # Mock Anki initialization
   mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
   mocker.patch('main.AnkiRepository', return_value=mock_anki_repo)
   mocker.patch('main.TodoistSentenceSource', return_value=mock_sentence_source)
@@ -323,29 +366,30 @@ def test_append_on_new_or_learning_card(mocker, card_status):
 
   main_func()
 
-  # Assertions for APPEND logic
-  update_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'updateNoteFields'), None)
-  assert update_call is not None
-  updated_note = update_call.args[1]['note']
-  assert updated_note['id'] == '1516428352996'
-  assert updated_note['fields'][
-           'Text'] == 'A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
-  assert updated_note['fields'][
-           'AllSentences'] == 'Old sentence.<br>A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
+  # Assertions for error handling logic
+  mock_task_completion_handler.on_error.assert_called_once_with(
+    '123',
+    "Duplicate Anki note found for 'duplicate word'.",
+    mocker.ANY  # The actual exception object
+  )
+  # Ensure no updates were attempted
+  mock_anki_repo.request.assert_has_calls([
+    call('findNotes', {
+      'query': '"deck:sentence-mining" "note:English sentence-mining Model" "Word:duplicate word" "Definition:a word that already exists"'}),
+    # No updateNoteFields or forgetCards calls
+  ])
+  assert not any(c.args[0] == 'updateNoteFields' for c in mock_anki_repo.request.call_args_list)
+  assert not any(c.args[0] == 'forgetCards' for c in mock_anki_repo.request.call_args_list)
+  assert not any(c.args[0] == 'addNote' for c in mock_anki_repo.request.call_args_list)
 
-  forget_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'forgetCards'), None)
-  assert forget_call is None
 
-  add_note_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'addNote'), None)
-  assert add_note_call is None
-
-
-def test_destructive_update_on_learned_card(mocker):
+def test_duplicate_handling_disabled_on_error_learned_card(mocker):
   """
-  Tests that if a duplicate note is found for a LEARNED card (queue=2, interval>=1),
-  the note is overwritten and progress is reset.
+  Tests that when UPDATE_DUPLICATES is False, a DuplicateNoteError is raised
+  and the task completion handler's on_error is called, even for learned cards.
   """
   # Common setup
+  mocker.patch('config.UPDATE_DUPLICATES', False)  # Explicitly disable duplicate updates
   mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
   mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
   mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
@@ -358,15 +402,36 @@ def test_destructive_update_on_learned_card(mocker):
   ]))
   mock_task_completion_handler = MagicMock()
 
-  # Mock Anki repo for LEARNED card duplicate scenario
+  # Mock Anki repo for LEARNED card duplicate scenario (still need findNotes for initial check)
   def anki_repo_side_effect(action, params=None):
-    if action == 'findNotes': return ['1516428352996']
-    if action == 'findCards': return ['card123', 'card456']
-    if action == 'cardsInfo': return [{'note': '1516428352996', 'queue': 2, 'interval': 21}]  # Learned card
+    if action == 'findNotes':
+      return ['1516428352996']
+    elif action == 'findCards':
+      return ['card123', 'card456']
+    elif action == 'cardsInfo':
+      return [{'note': '1516428352996', 'queue': 2, 'interval': 21}]  # Learned card
+    elif action == 'notesInfo':
+      return [{'fields': {'AllSentences': {'value': 'Old sentence from learned card.'}}}]
+    # Handle other actions that AnkiService might call during initialization or process
+    elif action == 'version':
+      return None
+    elif action == 'deckNames':
+      return []
+    elif action == 'createDeck':
+      return None
+    elif action == 'modelNames':
+      return []
+    elif action == 'createModel':
+      return None
+    elif action == 'updateNoteFields':
+      return None  # Allow this to be called without error
+    elif action == 'forgetCards':
+      return None  # Allow this to be called without error
     return None
 
   mock_anki_repo.request.side_effect = anki_repo_side_effect
 
+  mocker.patch('main.AnkiService.initialize_anki')  # Mock Anki initialization
   mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
   mocker.patch('main.AnkiRepository', return_value=mock_anki_repo)
   mocker.patch('main.TodoistSentenceSource', return_value=mock_sentence_source)
@@ -377,20 +442,18 @@ def test_destructive_update_on_learned_card(mocker):
 
   main_func()
 
-  # Assertions for OVERWRITE and RESET logic
-  update_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'updateNoteFields'), None)
-  assert update_call is not None
-  updated_note = update_call.args[1]['note']
-  assert updated_note['id'] == '1516428352996'
-  assert updated_note['fields'][
-           'Text'] == 'A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
-  assert updated_note['fields'][
-           'AllSentences'] == 'A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
-  assert updated_note['fields']['Definition'] == 'a word that already exists'
-
-  forget_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'forgetCards'), None)
-  assert forget_call is not None
-  assert forget_call.args[1]['cards'] == ['card123', 'card456']
-
-  add_note_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'addNote'), None)
-  assert add_note_call is None
+  # Assertions for error handling logic
+  mock_task_completion_handler.on_error.assert_called_once_with(
+    '123',
+    "Duplicate Anki note found for 'duplicate word'.",
+    mocker.ANY  # The actual exception object
+  )
+  # Ensure no updates or forgets were attempted
+  mock_anki_repo.request.assert_has_calls([
+    call('findNotes', {
+      'query': '"deck:sentence-mining" "note:English sentence-mining Model" "Word:duplicate word" "Definition:a word that already exists"'}),
+    # No updateNoteFields or forgetCards calls
+  ])
+  assert not any(c.args[0] == 'updateNoteFields' for c in mock_anki_repo.request.call_args_list)
+  assert not any(c.args[0] == 'forgetCards' for c in mock_anki_repo.request.call_args_list)
+  assert not any(c.args[0] == 'addNote' for c in mock_anki_repo.request.call_args_list)

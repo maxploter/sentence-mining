@@ -17,7 +17,7 @@ class AnkiRepository:
     """
 
     @staticmethod
-    def is_retryable(self, exception):
+    def is_retryable(exception):
         """Return True if we should retry on a timeout or network error."""
         error_str = str(exception).lower()
         return "timeout" in error_str or "network error" in error_str

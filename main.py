@@ -3,13 +3,11 @@ import datetime
 import logging  # Import the logging module
 from typing import Optional, List
 
-import config
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from llm_service import LLMService
-from anki_service import AnkiService
+from anki_service import AnkiService, DuplicateNoteError
 from word_processor import WordProcessor 
 
 # Import repositories
@@ -78,11 +76,15 @@ def run_process(
                     word = first_word_match.group(1)
                 else:
                     logging.warning(f"Could not extract a meaningful word from '{item.entry_text}' or '{sentence1}'. Skipping item {item.id}.")
-                    task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+                    task_completion_handler.on_error(item.id,
+                                                     f"Could not extract a meaningful word from '{item.entry_text}' or '{sentence1}'.",
+                                                     None)
                     continue
             else:
                 logging.warning(f"Could not extract word from '{item.entry_text}' and no context sentence. Skipping item {item.id}.")
-                task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+                task_completion_handler.on_error(item.id,
+                                                 f"Could not extract word from '{item.entry_text}' and no context sentence.",
+                                                 None)
                 continue
         
         clean_word = llm_service.strip_markdown_formatting(word)
@@ -109,8 +111,7 @@ def run_process(
         # b. Get definition from LLM
         definition = llm_service.get_definition(clean_word, sentence1)
         if not definition:
-            logging.warning(f"Could not get definition for '{clean_word}' (ID: {item.id}). Skipping.")
-            task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+          task_completion_handler.on_error(item.id, f"Could not get definition for '{clean_word}'.", None)
             continue
         logging.info(f"Definition for '{clean_word}': {definition}")
 
@@ -118,7 +119,7 @@ def run_process(
         sentence2 = llm_service.generate_sentence(clean_word, definition, sentence1)
         if not sentence2:
             logging.warning(f"Could not generate a sentence for '{clean_word}' (ID: {item.id}). Skipping.")
-            task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+            task_completion_handler.on_error(item.id, f"Could not generate a sentence for '{clean_word}'.", None)
             continue
         logging.info(f"Generated sentence for '{clean_word}'.")
 
@@ -131,9 +132,13 @@ def run_process(
                 sentence2,
                 tags=final_tags_list # Pass combined tags
             )
+        except DuplicateNoteError as e:
+          logging.warning(f"Duplicate note found for '{clean_word}' (ID: {item.id}): {e}. Handling as error.")
+          task_completion_handler.on_error(item.id, f"Duplicate Anki note found for '{clean_word}'.", e)
+          continue
         except ValueError as e:
             logging.warning(f"Cloze creation failed for '{clean_word}' (ID: {item.id}): {e}. Tagging task for review.")
-            task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+            task_completion_handler.on_error(item.id, f"Cloze creation failed for '{clean_word}'.", e)
             continue
         except ConnectionError as e:
             # This catches critical errors like AnkiConnect being down during add_note
@@ -141,7 +146,8 @@ def run_process(
             return
         except Exception as e:
             logging.error(f"An unexpected error occurred while adding note for '{clean_word}' (ID: {item.id}): {e}. Tagging task for review.")
-            task_completion_handler.add_label_to_task(item.id, config.TODOIST_ERROR_TAG)
+            task_completion_handler.on_error(item.id,
+                                             f"An unexpected error occurred while adding note for '{clean_word}'.", e)
             continue
 
 

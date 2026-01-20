@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import config
 from datasources.sentence_source import SentenceSource
@@ -53,5 +53,13 @@ class TodoistTaskCompletionHandler(TaskCompletionHandler):
     def complete_task(self, task_id: str):
         self.repository.complete_task(task_id)
 
-    def add_label_to_task(self, task_id: str, label_name: str):
-        self.repository.add_label_to_task(task_id, label_name)
+    def on_error(self, item_id: str, message: str, exception: Optional[Exception] = None):
+      """
+      Handles an error for a given Todoist task.
+      It adds the configured error tag and a comment with the error message to the task.
+      """
+      self.repository.add_label_to_task(item_id, config.TODOIST_ERROR_TAG)
+      full_message = f"Processing Error: {message}"
+      if exception:
+        full_message += f" Details: {exception}"
+      self.repository.add_comment_to_task(item_id, full_message)

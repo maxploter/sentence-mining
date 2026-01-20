@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 class TaskCompletionHandler(ABC):
     """
@@ -7,11 +8,14 @@ class TaskCompletionHandler(ABC):
     has been processed, without knowing the specifics of the data source.
     """
     @abstractmethod
-    def complete_task(self, task_id: str):
+    def complete_task(self, item_id: str):
         """Marks a task as complete in the underlying data source."""
         pass
 
     @abstractmethod
-    def add_label_to_task(self, task_id: str, label_name: str):
-        """Adds a label to a task in the underlying data source."""
+    def on_error(self, item_id: str, message: str, exception: Optional[Exception] = None):
+      """
+      Handles an error for a given item. This can involve tagging, commenting, or other actions
+      depending on the specific data source.
+      """
         pass

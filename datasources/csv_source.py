@@ -1,9 +1,11 @@
 import csv
-from typing import List
-import logging # Import the logging module
+import logging  # Import the logging module
+from typing import List, Optional  # Import Optional
+
 from datasources.sentence_source import SentenceSource
 from domain.models import SourceSentence
 from domain.task_completion_handler import TaskCompletionHandler
+
 
 class CsvSentenceSource(SentenceSource):
     """
@@ -54,8 +56,15 @@ class NoOpTaskCompletionHandler(TaskCompletionHandler):
     A no-operation implementation of TaskCompletionHandler, used for
     data sources (like CSV) where there's no external task to complete or label.
     """
-    def complete_task(self, task_id: str):
-        logging.info(f"No-op: Task {task_id} would be marked as complete.")
 
-    def add_label_to_task(self, task_id: str, label_name: str):
-        logging.info(f"No-op: Label '{label_name}' would be added to task {task_id}.")
+    def complete_task(self, item_id: str):  # Changed task_id to item_id for consistency
+      logging.info(f"No-op: Task {item_id} would be marked as complete.")
+
+    def on_error(self, item_id: str, message: str, exception: Optional[Exception] = None):
+      """
+      Handles an error for a given item in a no-op manner.
+      """
+      log_message = f"No-op Error for item {item_id}: {message}"
+      if exception:
+        log_message += f" Details: {exception}"
+      logging.warning(log_message)
