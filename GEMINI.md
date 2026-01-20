@@ -4,9 +4,10 @@
 
 This project is a Python-based automation script designed for language learning, focusing on creating Anki flashcards. Its core function is to process words and sentences from various configurable sources (e.g., Todoist tasks, CSV files). For each item, it leverages a Large Language Model (LLM) via the Nebius AI API to generate context-aware definitions and additional example sentences. Finally, it connects to a local Anki instance through the AnkiConnect add-on to create a single, comprehensive Anki note per item.
 
-Each generated Anki note consists of two cloze deletion cards, designed for effective recall:
-1.  A cloze deletion card based on the original sentence where the word was encountered.
-2.  A cloze deletion card based on a newly generated example sentence.
+Each generated Anki note contains two types of cards for versatile study:
+
+1. A **Cloze Deletion card**, where the target word is blanked out in its original sentence and a newly generated one.
+2. A **Definition -> Word card**, which prompts the user to recall the word from its definition.
 
 The architecture has evolved to be highly modular and testable, employing a layered approach with **Domain Models**, **Repositories**, **Services**, and **Data Sources**. This design allows for easy extension to new data input methods (like CSV files) and robust testing by abstracting external APIs and focusing on the application's business logic. Items successfully processed are marked as complete in their respective data sources where applicable (e.g., Todoist tasks are marked as complete).
 
@@ -20,6 +21,9 @@ The architecture has evolved to be highly modular and testable, employing a laye
     *   `python-dotenv`: For managing environment variables and secrets.
     *   `tenacity`: For implementing robust retry logic on network requests.
     *   `dataclasses`: For creating clean, domain-specific data models.
+    * `ruff`: For code linting and formatting.
+    * `pytest`: For unit and integration testing.
+    * `pytest-mock`: For creating mock objects in tests.
 *   **Architectural Components:**
     *   **Domain Models:** Simple dataclasses (`SourceSentence`) representing the core data entities, decoupled from any specific source.
     *   **Repositories:** Abstract away the details of external APIs (Todoist, Nebius AI, AnkiConnect), providing a clean interface for services. (`TodoistRepository`, `LLMRepository`, `AnkiRepository`).
@@ -73,13 +77,14 @@ The architecture has evolved to be highly modular and testable, employing a laye
     ```
     If `DATA_SOURCE_TYPE` is set to `"csv"`, the script will look for a `words.csv` file in the project's root directory. The `words.csv` file should have the following header and format:
     ```csv
-    id,entry_text,sentence
-    unique_id_1,your_word_or_phrase,The full sentence containing your word or phrase.
-    unique_id_2,english another_word,Another example sentence.
+    id,entry_text,sentence,tags
+    unique_id_1,your_word_or_phrase,The full sentence containing your word or phrase.,"Tag1,Source::BookTitle"
+    unique_id_2,another_word,Another example sentence,Tag2
     ```
     *   `id`: A unique identifier for the entry (e.g., a number, a UUID).
     *   `entry_text`: The text from which the word to be learned will be extracted (e.g., "apple", "english headspace").
     *   `sentence`: The full sentence context for the word.
+    * `tags` (Optional): A comma-separated string of tags to be added to the Anki note.
 
 6.  **Run the Script:**
     Make sure Anki is open and running on your machine, then execute:
@@ -114,7 +119,17 @@ The architecture has evolved to be highly modular and testable, employing a laye
     *   **Repositories Layer (`repositories/`)**: Abstracts away the details of external APIs (Todoist, Nebius AI, AnkiConnect). These are thin wrappers around external libraries, handling API calls and error retry logic.
     *   **Service Layer (`llm_service.py`, `anki_service.py`, `word_processor.py`)**: Encapsulates the application's business logic. Services operate on domain models and depend on repositories and other services via **Dependency Injection**.
     *   **Data Sources Layer (`datasources/`)**: Implements the `SentenceSource` and `TaskCompletionHandler` interfaces. These components are responsible for fetching raw data from specific sources (e.g., Todoist, CSV, Text files) and transforming it into domain models.
-    *   **Composition Root (`main.py`)**: Responsible for wiring up all the dependencies (repositories, services, data sources) based on configuration, and executing the main application flow.
+    * **Composition Root (`main.py`)**: Acts as the application's entry point, where all dependencies are wired
+      together. It parses command-line arguments to select the appropriate data source, initializes the repositories,
+      services, and data sources, and injects them where needed.
+* **Logging**: A central logging configuration is set up in `main.py` to provide real-time, detailed feedback on the
+  script's execution, including connection statuses, data processing, and errors.
+* **Duplicate Note Handling:** The `AnkiService` implements intelligent logic for handling duplicate notes. When a note
+  with the same word and definition is found:
+    * If the card has been studied (i.e., its review interval is greater than zero), the note's content is overwritten
+      with the new sentences, and its learning progress is **reset**.
+    * If the card is new and unstudied, the new sentences are **appended** to the existing note, preserving all
+      sentences collected for that word.
 *   **Dependency Injection:** Dependencies are passed into constructors of classes (services, data sources) rather than being created internally. This makes components highly decoupled and significantly improves testability, as mock implementations can be easily injected during testing.
 *   **Tagging System:** The application implements a flexible tagging system for Anki notes, combining tags from multiple sources:
     *   **Script-Generated**: Automatically adds `Year::YYYY` and `Month::MM` tags based on the current date.

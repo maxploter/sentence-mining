@@ -2,6 +2,8 @@ import datetime
 import sys
 from unittest.mock import MagicMock, call
 
+import pytest
+
 # Add the project root to the Python path
 sys.path.insert(0, sys.path[0] + '/..')
 
@@ -128,6 +130,8 @@ def test_end_to_end_flow(mocker):
     assert note1['fields'][
              'Text'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c1::test word}}.'
     assert note1['fields']['Definition'] == 'a word for testing'
+    assert note1['fields'][
+             'AllSentences'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c1::test word}}.'
 
     # Combined tags for note 1
     expected_note1_tags = set(expected_script_tags)
@@ -141,6 +145,8 @@ def test_end_to_end_flow(mocker):
     assert 'I have the {{c1::headspace}} to muse' in note2['fields']['Text']
     assert 'A generated sentence for {{c1::headspace}}.' in note2['fields']['Text']
     assert note2['fields']['Definition'] == 'the mental space for something'
+    assert 'I have the {{c1::headspace}} to muse' in note2['fields']['AllSentences']
+    assert 'A generated sentence for {{c1::headspace}}.' in note2['fields']['AllSentences']
 
     # Combined tags for note 2
     expected_note2_tags = set(expected_script_tags)
@@ -155,6 +161,8 @@ def test_end_to_end_flow(mocker):
     assert note3['fields'][
              'Text'] == 'The beauty of a sunset is often {{c1::ephemeral}}.<br>A fleeting moment can be quite {{c1::ephemeral}}.'
     assert note3['fields']['Definition'] == 'lasting for a very short time'
+    assert note3['fields'][
+             'AllSentences'] == 'The beauty of a sunset is often {{c1::ephemeral}}.<br>A fleeting moment can be quite {{c1::ephemeral}}.'
 
     # Combined tags for note 3
     expected_note3_tags = set(expected_script_tags)
@@ -167,6 +175,7 @@ def test_end_to_end_flow(mocker):
     assert note4 is not None
     assert note4['fields']['Text'] == 'This sentence is generated for the word {{c1::wordonly}}.'
     assert note4['fields']['Definition'] == 'a word used for testing when no original sentence is provided'
+    assert note4['fields']['AllSentences'] == 'This sentence is generated for the word {{c1::wordonly}}.'
 
     # Combined tags for note 4
     expected_note4_tags = set(expected_script_tags)
@@ -270,3 +279,118 @@ def test_end_to_end_flow(mocker):
     complete_task_calls = [call('123'), call('456'), call('789'), call('999')]  # Added '999' for the new task
     mock_task_completion_handler.complete_task.assert_has_calls(complete_task_calls, any_order=True)
 
+
+@pytest.mark.parametrize("card_status", [
+  {"queue": 0, "interval": 0},  # New card
+  {"queue": 1, "interval": 1}  # Learning card
+])
+def test_append_on_new_or_learning_card(mocker, card_status):
+  """
+  Tests that if a duplicate note is found for a NEW or LEARNING card,
+  the new sentences are appended.
+  """
+  # Common setup
+  mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
+  mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
+  mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
+
+  mock_llm_repo = MagicMock(
+    ask=MagicMock(side_effect=['a word that already exists', 'A new generated sentence for the duplicate word.']))
+  mock_anki_repo = MagicMock()
+  mock_sentence_source = MagicMock(fetch_sentences=MagicMock(return_value=[
+    SourceSentence(id='123', entry_text='duplicate word', sentence='A new sentence for the duplicate word.')
+  ]))
+  mock_task_completion_handler = MagicMock()
+
+  # Mock Anki repo for NEW or LEARNING card duplicate scenario
+  def anki_repo_side_effect(action, params=None):
+    if action == 'findNotes': return ['1516428352996']
+    if action == 'findCards': return ['card123']
+    if action == 'cardsInfo': return [
+      {'note': '1516428352996', 'queue': card_status['queue'], 'interval': card_status['interval']}]
+    if action == 'notesInfo': return [{'fields': {'AllSentences': {'value': 'Old sentence.'}}}]
+    return None
+
+  mock_anki_repo.request.side_effect = anki_repo_side_effect
+
+  mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
+  mocker.patch('main.AnkiRepository', return_value=mock_anki_repo)
+  mocker.patch('main.TodoistSentenceSource', return_value=mock_sentence_source)
+  mocker.patch('main.TodoistTaskCompletionHandler', return_value=mock_task_completion_handler)
+  mocker.patch('main.CsvSentenceSource', return_value=MagicMock())
+  mocker.patch('main.TextFileSentenceSource', return_value=MagicMock())
+  mocker.patch('main.NoOpTaskCompletionHandler', return_value=MagicMock())
+
+  main_func()
+
+  # Assertions for APPEND logic
+  update_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'updateNoteFields'), None)
+  assert update_call is not None
+  updated_note = update_call.args[1]['note']
+  assert updated_note['id'] == '1516428352996'
+  assert updated_note['fields'][
+           'Text'] == 'A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
+  assert updated_note['fields'][
+           'AllSentences'] == 'Old sentence.<br>A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
+
+  forget_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'forgetCards'), None)
+  assert forget_call is None
+
+  add_note_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'addNote'), None)
+  assert add_note_call is None
+
+
+def test_destructive_update_on_learned_card(mocker):
+  """
+  Tests that if a duplicate note is found for a LEARNED card (queue=2, interval>=1),
+  the note is overwritten and progress is reset.
+  """
+  # Common setup
+  mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
+  mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
+  mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
+
+  mock_llm_repo = MagicMock(
+    ask=MagicMock(side_effect=['a word that already exists', 'A new generated sentence for the duplicate word.']))
+  mock_anki_repo = MagicMock()
+  mock_sentence_source = MagicMock(fetch_sentences=MagicMock(return_value=[
+    SourceSentence(id='123', entry_text='duplicate word', sentence='A new sentence for the duplicate word.')
+  ]))
+  mock_task_completion_handler = MagicMock()
+
+  # Mock Anki repo for LEARNED card duplicate scenario
+  def anki_repo_side_effect(action, params=None):
+    if action == 'findNotes': return ['1516428352996']
+    if action == 'findCards': return ['card123', 'card456']
+    if action == 'cardsInfo': return [{'note': '1516428352996', 'queue': 2, 'interval': 21}]  # Learned card
+    return None
+
+  mock_anki_repo.request.side_effect = anki_repo_side_effect
+
+  mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
+  mocker.patch('main.AnkiRepository', return_value=mock_anki_repo)
+  mocker.patch('main.TodoistSentenceSource', return_value=mock_sentence_source)
+  mocker.patch('main.TodoistTaskCompletionHandler', return_value=mock_task_completion_handler)
+  mocker.patch('main.CsvSentenceSource', return_value=MagicMock())
+  mocker.patch('main.TextFileSentenceSource', return_value=MagicMock())
+  mocker.patch('main.NoOpTaskCompletionHandler', return_value=MagicMock())
+
+  main_func()
+
+  # Assertions for OVERWRITE and RESET logic
+  update_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'updateNoteFields'), None)
+  assert update_call is not None
+  updated_note = update_call.args[1]['note']
+  assert updated_note['id'] == '1516428352996'
+  assert updated_note['fields'][
+           'Text'] == 'A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
+  assert updated_note['fields'][
+           'AllSentences'] == 'A new sentence for the {{c1::duplicate word}}.<br>A new generated sentence for the {{c1::duplicate word}}.'
+  assert updated_note['fields']['Definition'] == 'a word that already exists'
+
+  forget_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'forgetCards'), None)
+  assert forget_call is not None
+  assert forget_call.args[1]['cards'] == ['card123', 'card456']
+
+  add_note_call = next((c for c in mock_anki_repo.request.call_args_list if c.args[0] == 'addNote'), None)
+  assert add_note_call is None
