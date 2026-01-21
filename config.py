@@ -24,5 +24,3 @@ ANKICONNECT_TIMEOUT = int(os.getenv("ANKICONNECT_TIMEOUT", "20"))
 ANKICONNECT_MAX_RETRIES = int(os.getenv("ANKICONNECT_MAX_RETRIES", "3"))
 ANKICONNECT_RETRY_DELAY = int(os.getenv("ANKICONNECT_RETRY_DELAY", "3"))
 
-# Anki Note Update Behavior
-UPDATE_DUPLICATES = os.getenv("UPDATE_DUPLICATES", "False").lower() == "true"

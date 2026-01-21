@@ -112,7 +112,7 @@ def run_process(
         definition = llm_service.get_definition(clean_word, sentence1)
         if not definition:
           task_completion_handler.on_error(item.id, f"Could not get definition for '{clean_word}'.", None)
-            continue
+          continue
         logging.info(f"Definition for '{clean_word}': {definition}")
 
         # c. Generate second sentence from LLM
@@ -134,6 +134,7 @@ def run_process(
             )
         except DuplicateNoteError as e:
           logging.warning(f"Duplicate note found for '{clean_word}' (ID: {item.id}): {e}. Handling as error.")
+
           task_completion_handler.on_error(item.id, f"Duplicate Anki note found for '{clean_word}'.", e)
           continue
         except ValueError as e:

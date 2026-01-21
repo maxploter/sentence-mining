@@ -8,9 +8,6 @@ import pytest
 sys.path.insert(0, sys.path[0] + '/..')
 
 from main import main as main_func # Rename main to main_func to avoid conflict
-from llm_service import LLMService
-from anki_service import AnkiService
-from word_processor import WordProcessor
 from domain.models import SourceSentence
 from domain.task_completion_handler import TaskCompletionHandler
 from datasources.todoist_source import TodoistTaskCompletionHandler
@@ -30,7 +27,6 @@ def test_end_to_end_flow(mocker):
 
     # 1. Mock Repositories (the external boundary of the app)
     mock_llm_repo = MagicMock()
-    mock_anki_repo = MagicMock()
     mock_todoist_repo = MagicMock() # Need this now for TodoistSentenceSource and TodoistTaskCompletionHandler
 
     # 2. Mock Data Source and Task Completion Handler
@@ -85,24 +81,46 @@ def test_end_to_end_flow(mocker):
       # Definition for 'ephemeral'
       'lasting for a very short time',
       # Generated sentence for 'ephemeral'
-      'A fleeting moment can be quite ephemeral.',  # Definition for 'wordonly' (no context)
+      'A fleeting moment can be quite ephemeral.',
+      # Definition for 'wordonly' (no context)
       'a word used for testing when no original sentence is provided',
       # Generated sentence for 'wordonly'
       'This sentence is generated for the word wordonly.']
 
     # Mock Anki calls (for findNotes and addNote)
-    mock_anki_repo.request.side_effect = lambda action, params=None: [] if action == 'findNotes' else None
+    def anki_repo_side_effect(action, params=None):
+      if action == 'findNotes':
+        return []
+      elif action == 'addNote':
+        return {'noteId': 'mock_note_id'}  # Return a success value for addNote
+      elif action == 'modelNames':
+        return []  # Initially no models exist
+      elif action == 'deckNames':
+        return []  # Initially no decks exist
+      elif action == 'createModel':
+        return None  # Indicate success for creating model
+      elif action == 'createDeck':
+        return None  # Indicate success for creating deck
+      return None  # Default for other actions
 
-    # 4. Instantiate REAL services with MOCK repositories and data source
-    word_processor = WordProcessor() # WordProcessor is a pure class, no need to mock
-    llm_service = LLMService(mock_llm_repo)
-    anki_service = AnkiService(mock_anki_repo, llm_service) # AnkiService needs LLMService
+    patched_anki_request_mock = MagicMock(side_effect=anki_repo_side_effect)
+    mocker.patch('repositories.anki_repository.AnkiRepository.request', side_effect=patched_anki_request_mock)
+
+    mocker.patch('anki_service.AnkiService._create_cloze_sentence', side_effect=[
+      'This sentence contains the {{c1::test word}}.',  # Original sentence 1 cloze
+      'Another sentence with the {{c1::test word}}.',  # Generated sentence 1 cloze
+      'So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the {{c1::headspace}} to muse about these matters.',
+      # Original sentence 2 cloze
+      'A generated sentence for {{c1::headspace}}.',  # Generated sentence 2 cloze
+      'The beauty of a sunset is often {{c1::ephemeral}}.',  # Original sentence 3 cloze
+      'A fleeting moment can be quite {{c1::ephemeral}}.',  # Generated sentence 3 cloze
+      'This sentence is generated for the word {{c1::wordonly}}.'  # Generated sentence 4 cloze
+    ])  # 4. We rely on main_func to instantiate services with mocked repositories and data sources.
 
     # 5. Run the main application logic - we now mock the components main_func creates
     # and call main_func directly.
-    mocker.patch('main.TodoistRepository', return_value=mock_todoist_repo)
+    mocker.patch('repositories.todoist_repository.TodoistRepository', return_value=mock_todoist_repo)
     mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
-    mocker.patch('main.AnkiRepository', return_value=mock_anki_repo)
     # Patch the data source and task completion handler that main_func will create
     mocker.patch('main.TodoistSentenceSource', return_value=mock_sentence_source)
     mocker.patch('main.TodoistTaskCompletionHandler', return_value=mock_task_completion_handler)
@@ -120,7 +138,7 @@ def test_end_to_end_flow(mocker):
 
     # Verify Anki repository calls
     add_note_calls = [
-      c.args[1]['note'] for c in mock_anki_repo.request.call_args_list
+      c.args[1]['note'] for c in patched_anki_request_mock.call_args_list
         if c.args[0] == 'addNote'
     ]
     assert len(add_note_calls) == 4  # Expecting 4 notes now
@@ -131,8 +149,6 @@ def test_end_to_end_flow(mocker):
     assert note1['fields'][
              'Text'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c1::test word}}.'
     assert note1['fields']['Definition'] == 'a word for testing'
-    assert note1['fields'][
-             'AllSentences'] == 'This sentence contains the {{c1::test word}}.<br>Another sentence with the {{c1::test word}}.'
 
     # Combined tags for note 1
     expected_note1_tags = set(expected_script_tags)
@@ -146,8 +162,6 @@ def test_end_to_end_flow(mocker):
     assert 'I have the {{c1::headspace}} to muse' in note2['fields']['Text']
     assert 'A generated sentence for {{c1::headspace}}.' in note2['fields']['Text']
     assert note2['fields']['Definition'] == 'the mental space for something'
-    assert 'I have the {{c1::headspace}} to muse' in note2['fields']['AllSentences']
-    assert 'A generated sentence for {{c1::headspace}}.' in note2['fields']['AllSentences']
 
     # Combined tags for note 2
     expected_note2_tags = set(expected_script_tags)
@@ -162,8 +176,6 @@ def test_end_to_end_flow(mocker):
     assert note3['fields'][
              'Text'] == 'The beauty of a sunset is often {{c1::ephemeral}}.<br>A fleeting moment can be quite {{c1::ephemeral}}.'
     assert note3['fields']['Definition'] == 'lasting for a very short time'
-    assert note3['fields'][
-             'AllSentences'] == 'The beauty of a sunset is often {{c1::ephemeral}}.<br>A fleeting moment can be quite {{c1::ephemeral}}.'
 
     # Combined tags for note 3
     expected_note3_tags = set(expected_script_tags)
@@ -176,7 +188,6 @@ def test_end_to_end_flow(mocker):
     assert note4 is not None
     assert note4['fields']['Text'] == 'This sentence is generated for the word {{c1::wordonly}}.'
     assert note4['fields']['Definition'] == 'a word used for testing when no original sentence is provided'
-    assert note4['fields']['AllSentences'] == 'This sentence is generated for the word {{c1::wordonly}}.'
 
     # Combined tags for note 4
     expected_note4_tags = set(expected_script_tags)
@@ -309,13 +320,12 @@ def test_todoist_task_completion_handler_on_error(mocker):
   {"queue": 0, "interval": 0},  # New card
   {"queue": 1, "interval": 1}  # Learning card
 ])
-def test_duplicate_handling_disabled_on_error(mocker, card_status):
+def test_duplicate_note_raises_error_and_calls_on_error(mocker, card_status):
   """
-  Tests that when UPDATE_DUPLICATES is False, a DuplicateNoteError is raised
+  Tests that when a duplicate note is found, a DuplicateNoteError is raised
   and the task completion handler's on_error is called, regardless of card status.
   """
   # Common setup
-  mocker.patch('config.UPDATE_DUPLICATES', False)  # Explicitly disable duplicate updates
   mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
   mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
   mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
@@ -329,32 +339,15 @@ def test_duplicate_handling_disabled_on_error(mocker, card_status):
   mock_task_completion_handler = MagicMock()
 
   # Mock Anki repo for duplicate scenario
-  def anki_repo_side_effect(action, params=None):
-    if action == 'findNotes':
-      return ['1516428352996']
-    elif action == 'findCards':
-      return ['card123']
-    elif action == 'cardsInfo':
-      return [{'note': '1516428352996', 'queue': card_status['queue'], 'interval': card_status['interval']}]
-    elif action == 'notesInfo':
-      return [{'fields': {'AllSentences': {'value': 'Old sentence.'}}}]
-    elif action == 'version':
-      return None
-    elif action == 'deckNames':
-      return []
-    elif action == 'createDeck':
-      return None
-    elif action == 'modelNames':
-      return []
-    elif action == 'createModel':
-      return None
-    elif action == 'updateNoteFields':
-      return None
-    elif action == 'forgetCards':
-      return None
-    return None
-
-  mock_anki_repo.request.side_effect = anki_repo_side_effect
+  mock_anki_repo.request.findNotes.return_value = ['1516428352996']
+  mock_anki_repo.request.addNote.return_value = {'noteId': 'mock_note_id'}
+  mock_anki_repo.request.version.return_value = None
+  mock_anki_repo.request.deckNames.return_value = []
+  mock_anki_repo.request.createDeck.return_value = None
+  mock_anki_repo.request.modelNames.return_value = []
+  mock_anki_repo.request.createModel.return_value = None
+  mock_anki_repo.request.updateNoteFields.return_value = None
+  mock_anki_repo.request.forgetCards.return_value = None
   mocker.patch('main.AnkiService.initialize_anki')  # Mock Anki initialization
   mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
   mocker.patch('main.AnkiRepository', return_value=mock_anki_repo)
@@ -383,13 +376,12 @@ def test_duplicate_handling_disabled_on_error(mocker, card_status):
   assert not any(c.args[0] == 'addNote' for c in mock_anki_repo.request.call_args_list)
 
 
-def test_duplicate_handling_disabled_on_error_learned_card(mocker):
+def test_duplicate_note_raises_error_and_calls_on_error_learned_card(mocker):
   """
-  Tests that when UPDATE_DUPLICATES is False, a DuplicateNoteError is raised
-  and the task completion handler's on_error is called, even for learned cards.
+  Tests that when a learned duplicate note is found, a DuplicateNoteError is raised
+  and the task completion handler's on_error is called.
   """
   # Common setup
-  mocker.patch('config.UPDATE_DUPLICATES', False)  # Explicitly disable duplicate updates
   mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
   mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
   mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
@@ -402,7 +394,6 @@ def test_duplicate_handling_disabled_on_error_learned_card(mocker):
   ]))
   mock_task_completion_handler = MagicMock()
 
-  # Mock Anki repo for LEARNED card duplicate scenario (still need findNotes for initial check)
   def anki_repo_side_effect(action, params=None):
     if action == 'findNotes':
       return ['1516428352996']

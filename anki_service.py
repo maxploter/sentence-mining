@@ -49,7 +49,6 @@ class AnkiService:
                     "Word",       # The target word
                   "Text",  # The full text with cloze deletions (just the current one)
                     "Definition", # The word's definition
-                  "AllSentences",  # All sentences for the word
                 ],
                 "css": css,
                 "isCloze": True,
@@ -59,9 +58,7 @@ class AnkiService:
                         "Front": "{{cloze:Text}}",
                         "Back": "{{cloze:Text}}<hr id=answer>"
                                 "<b>{{Word}}</b><br><br>"
-                                "{{Definition}}<br><br>"
-                                "--- All Sentences ---<br>"
-                                "{{AllSentences}}",
+                                "{{Definition}}",
                     },
                   {
                     "Name": "Definition -> Word",
@@ -143,8 +140,8 @@ class AnkiService:
 
     def add_note(self, word, definition, sentence1, sentence2, tags=None):
         """
-        Adds or updates an Anki note. If a duplicate (same Word and Definition) is found,
-        it updates the note based on its review history.
+        Adds a new Anki note. If a duplicate (same Word and Definition) is found,
+        it raises a DuplicateNoteError.
         """
         clean_word = self._remove_cloze_syntax(word)
         clean_definition = definition.replace('"', '')
@@ -176,80 +173,23 @@ class AnkiService:
 
         try:
           if duplicate_notes:
-            if config.UPDATE_DUPLICATES:
-              # --- 3a. Duplicate found: Decide whether to append or overwrite ---
-              note_id = duplicate_notes[0]
-              card_ids = self.repository.request("findCards", {"query": f"nid:{note_id}"})
+            raise DuplicateNoteError(f"Duplicate note found for word: '{clean_word}'", note_id=duplicate_notes[0])
 
-              if not card_ids:
-                logging.warning(f"Note {note_id} found but has no cards. Skipping update.")
-                return
-
-              # Check the first card's interval to determine if it's been studied
-              card_info = self.repository.request("cardsInfo", {"cards": [card_ids[0]]})
-              if not card_info:
-                logging.error(f"Could not retrieve info for card ID {card_ids[0]}. Skipping update.")
-                return
-
-              interval = int(card_info[0].get('interval', 0))
-
-              if interval > 0:
-                # --- Card has been studied: Destructive update and reset ---
-                logging.info(
-                  f"Duplicate card for '{word}' has been studied. Overwriting content and resetting progress.")
-                note_update_payload = {
-                  "id": note_id,
-                  "fields": {
-                    "Text": new_text_block,
-                    "AllSentences": new_text_block,
-                    "Definition": definition  # Also overwrite definition in case it had subtle changes
-                  }
-                }
-                self.repository.request("updateNoteFields", {"note": note_update_payload})
-                self.repository.request("forgetCards", {"cards": card_ids})
-                logging.info(f"Reset progress for cards of note '{word}'.")
-
-              else:
-                # --- Card is new: Append sentences ---
-                logging.info(f"Duplicate card for '{word}' is new. Appending new sentences.")
-                note_info = self.repository.request("notesInfo", {"notes": [note_id]})
-                if not note_info or not note_info[0] or 'fields' not in note_info[0]:
-                  logging.error(f"Could not retrieve info for duplicate note ID {note_id}. Skipping update.")
-                  return
-
-                current_all_sentences = note_info[0]['fields'].get('AllSentences', {}).get('value', '')
-                updated_all_sentences = f"{current_all_sentences}<br>{new_text_block}" if current_all_sentences else new_text_block
-
-                note_update_payload = {
-                  "id": note_id,
-                  "fields": {
-                    "Text": new_text_block,
-                    "AllSentences": updated_all_sentences
-                  }
-                }
-                self.repository.request("updateNoteFields", {"note": note_update_payload})
-                logging.info(f"Appended sentences to existing new note for '{word}'.")
-            else:
-              # If UPDATE_DUPLICATES is False, raise an error
-              raise DuplicateNoteError(f"Duplicate note found for word: '{clean_word}'", note_id=duplicate_notes[0])
-
-          else:
-            # --- 3b. No duplicate found: Create a new note ---
-            note = {
-              "deckName": deck_name,
-              "modelName": model_name,
-              "fields": {
-                "Word": clean_word,
-                "Text": new_text_block,
-                "Definition": definition,
-                "AllSentences": new_text_block,
-              },
-              "options": {"allowDuplicate": False},
-              "tags": tags or [],
-            }
-            self.repository.request("addNote", {"note": note})
-            logging.info(f"Added new note for '{word}'.")
+          # --- No duplicate found: Create a new note ---
+          note = {
+            "deckName": deck_name,
+            "modelName": model_name,
+            "fields": {
+              "Word": clean_word,
+              "Text": new_text_block,
+              "Definition": definition,
+            },
+            "options": {"allowDuplicate": False},
+            "tags": tags or [],
+          }
+          self.repository.request("addNote", {"note": note})
+          logging.info(f"Added new note for '{word}'.")
 
         except AnkiConnectError as e:
-          logging.error(f"Failed to add or update note for '{word}': {e}")
+          logging.error(f"Failed to add note for '{word}': {e}")
           raise e
