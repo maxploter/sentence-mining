@@ -43,7 +43,7 @@ class TodoistRepository:
         Raises an exception if the API call fails.
         """
         try:
-          is_success = self.api.close_task(task_id=task_id)
+          is_success = self.api.complete_task(task_id=task_id)
           if not is_success:
             raise Exception(f"Todoist API failed to close task {task_id}.")
           logging.info(f"Task {task_id} completed.")
