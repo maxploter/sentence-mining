@@ -1,9 +1,10 @@
 import csv
 import logging  # Import the logging module
-from typing import List  # Import Optional
+from typing import List, Optional  # Import Optional
 
 from datasources.sentence_source import SentenceSource
 from domain.models import SourceSentence
+from domain.task_completion_handler import TaskCompletionHandler
 
 
 class CsvSentenceSource(SentenceSource):
