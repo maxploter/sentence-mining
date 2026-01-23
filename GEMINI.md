@@ -28,7 +28,8 @@ The architecture has evolved to be highly modular and testable, employing a laye
     *   **Domain Models:** Simple dataclasses (`SourceSentence`) representing the core data entities, decoupled from any specific source.
     *   **Repositories:** Abstract away the details of external APIs (Todoist, Nebius AI, AnkiConnect), providing a clean interface for services. (`TodoistRepository`, `LLMRepository`, `AnkiRepository`).
     *   **Services:** Encapsulate the application's business logic, depending on repositories for data access and LLM interactions. (`LLMService`, `AnkiService`).
-    *   **Data Sources:** Implement the `SentenceSource` interface to provide `SourceSentence` objects from various origins (e.g., `TodoistSentenceSource`, `CsvSentenceSource`).
+    * **Data Sources:** Implement the `SentenceSource` interface to provide `SourceSentence` objects from various
+      origins (e.g., `TodoistSentenceSource`, `CsvSentenceSource`, `TextFileSentenceSource`).
     *   **Word Processor:** A utility (`WordProcessor`) for extracting the core word to be learned from raw source text.
     *   **Task Completion Handlers:** An abstraction (`TaskCompletionHandler`) to manage marking items as processed in their respective data sources (e.g., `TodoistTaskCompletionHandler`, `NoOpTaskCompletionHandler`).
     *   **Composition Root:** `main.py` is now responsible for wiring up all dependencies (repositories, services, data sources) based on configuration.
@@ -75,7 +76,8 @@ The architecture has evolved to be highly modular and testable, employing a laye
     TODOIST_API_KEY="YOUR_TODOIST_API_KEY"
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
     ```
-    If you are using the `csv` data source, you will need to provide a CSV file. The file should have the following header and format:
+    If `DATA_SOURCE_TYPE` is set to `"csv"`, the script will look for a `words.csv` file in the project's root
+    directory. The `words.csv` file should have the following header and format:
     ```csv
     id,entry_text,sentence,tags
     unique_id_1,your_word_or_phrase,The full sentence containing your word or phrase.,"Tag1,Source::BookTitle"

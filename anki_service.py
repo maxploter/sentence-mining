@@ -60,12 +60,6 @@ class AnkiService:
                                 "<b>{{Word}}</b><br><br>"
                                 "{{Definition}}",
                     },
-                  {
-                    "Name": "Definition -> Word",
-                    "Front": "{{Definition}}",
-                    "Back": "<b>{{Word}}</b><hr><br>"
-                            "See other card for sentences.",
-                    }
                 ],
             }
             self.repository.request("createModel", params)
