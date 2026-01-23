@@ -133,11 +133,30 @@ The architecture has evolved to be highly modular and testable, employing a laye
     * If the card is new and unstudied, the new sentences are **appended** to the existing note, preserving all
       sentences collected for that word.
 *   **Dependency Injection:** Dependencies are passed into constructors of classes (services, data sources) rather than being created internally. This makes components highly decoupled and significantly improves testability, as mock implementations can be easily injected during testing.
-*   **Tagging System:** The application implements a flexible tagging system for Anki notes, combining tags from multiple sources:
-    *   **Script-Generated**: Automatically adds `Year::YYYY` and `Month::MM` tags based on the current date.
-    *   **Data Source-Provided**: Tags can be extracted from the data source itself (e.g., Todoist task labels converted to `TaskLabel::MyLabel`, or `tags` column in CSV files).
-    *   **Command-Line Arguments**: Users can provide additional tags via the `--tags` (`-t`) command-line option.
-    All tags are combined and deduplicated before being added to the Anki note, using Anki's hierarchical tag format (e.g., `Parent::Child`) for better organization.
+*   **Tagging System:** The application implements a flexible tagging system for Anki notes, combining tags from multiple sources. This system utilizes a nested tag hierarchy (using `::`) for better organization and leverages Anki's powerful filtering capabilities.
+
+    **Recommended Tag Structure:**
+
+    *   **Time**: `Year::YYYY` (e.g., `Year::2026`) and `Month::::MM` (e.g., `Month::01`). These are automatically generated.
+    *   **Source Type**: `Type::Book`, `Type::News`, `Type::Podcast`, etc. (e.g., `Type::Book` from a CSV or text file, `Type::Todoist` for Todoist tasks).
+    *   **Specific Source**: `Source::BookName`, `Source::NewspaperName`, `Source::PodcastName` (e.g., `Source::Harry_Potter`, `Source::New_Yorker`, `Source::NPR_Podcast`). This can be added via command-line arguments for batch processing.
+    *   **Subject/Domain**: `Topic::Tech`, `Topic::Finance`, `Topic::Literature`, `Topic::History`, etc.
+    *   **Functional Tags (User-Defined)**: These tags describe how the card behaves or its status.
+        *   `Check`: For cards that might have a typo, an incorrect definition, or require manual review.
+        *   `Idiom` or `PhrasalVerb`: To categorize multi-word expressions.
+        *   `Critical`: For words or phrases that are essential to know (e.g., for work, an exam).
+
+    **How Tagging Works:**
+    *   **Combination**: Tags are collected from script-generated defaults, data source metadata (e.g., Todoist task labels, CSV `tags` column), and command-line arguments (`--tags` or `-t`).
+    *   **Deduplication**: All collected tags are combined, and duplicates are automatically removed.
+    *   **Hierarchical Format**: Anki's hierarchical tag format (e.g., `Parent::Child`) is used for better organization.
+    *   **Benefits**: Using a robust tagging system in Anki allows for flexible study. You can create "Filtered Decks" based on specific tags (e.g., to study only words from a particular book before a test) while keeping all your cards in one main deck for daily, efficient review.
+
+    **Example Usage (Command Line):**
+    ```bash
+    python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
+    python main.py --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
+    ```
 *   **Configuration:** Application settings (like project names) and secrets are managed in `config.py`. Secrets are loaded from a `.env` file, which is ignored by version control.
 *   **Error Handling:** The script includes robust error handling, especially for network operations, using the `tenacity` library for automatic retries with exponential backoff. Tasks that fail during processing (e.g., due to an inability to create a cloze) are tagged in Todoist (if Todoist is the source) for manual review.
 *   **Linting:** The project uses `ruff` for code linting to maintain code quality.

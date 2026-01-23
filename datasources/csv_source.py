@@ -1,16 +1,19 @@
 import csv
 import logging  # Import the logging module
-from typing import List, Optional  # Import Optional
+from typing import List  # Import Optional
 
 from datasources.sentence_source import SentenceSource
 from domain.models import SourceSentence
-from domain.task_completion_handler import TaskCompletionHandler
 
 
 class CsvSentenceSource(SentenceSource):
     """
     A SentenceSource implementation that fetches sentences from a CSV file.
-    The CSV file is expected to have 'id', 'entry_text', and 'sentence' columns.
+    It automatically detects the column structure based on the number of columns,
+    supporting 2, 3, or 4 columns, ignoring the header row.
+    - 2 columns: entry_text, sentence
+    - 3 columns: id, entry_text, sentence
+    - 4 columns: id, entry_text, sentence, tags
     """
     def __init__(self, file_path: str):
         self.file_path = file_path
@@ -18,33 +21,55 @@ class CsvSentenceSource(SentenceSource):
     def fetch_sentences(self) -> List[SourceSentence]:
         """
         Reads a CSV file and converts each row into a SourceSentence object.
+        It handles CSVs with 2, 3, or 4 columns, mapping them to:
+        - 2 cols: entry_text, sentence
+        - 3 cols: id, entry_text, sentence
+        - 4 cols: id, entry_text, sentence, tags
+        It assumes the first row is a header and skips it.
         """
         sentences = []
         try:
             with open(self.file_path, mode='r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for i, row in enumerate(reader):
-                    # Use provided ID or generate one if not present
-                    item_id = row.get('id', f"csv-{i+1}") 
+              reader = csv.reader(csvfile)
+              # Skip header row
+              next(reader, None)
 
-                    # Parse optional tags column
-                    item_tags = []
-                    if 'tags' in row and row['tags']:
-                        item_tags.extend([tag.strip() for tag in row['tags'].split(',')])
-                    item_tags.append("Type::CSV") # Add default source type tag
+              for i, row in enumerate(reader):
+                num_cols = len(row)
+                # Skip empty rows
+                if num_cols == 0:
+                  continue
 
-                    # Basic validation for required columns
-                    if 'entry_text' in row and 'sentence' in row:
-                        sentences.append(
-                            SourceSentence(
-                                id=item_id,
-                                entry_text=row['entry_text'],
-                                sentence=row['sentence'],
-                                tags=item_tags
-                            )
-                        )
-                    else:
-                        logging.warning(f"Skipping row in CSV due to missing required columns (entry_text or sentence): {row}")
+                item_id = f"csv-{i + 1}"
+                entry_text = ""
+                sentence = ""
+                item_tags = ["Type::CSV"]
+
+                if num_cols == 2:
+                  entry_text, sentence = row
+                elif num_cols == 3:
+                  item_id, entry_text, sentence = row
+                elif num_cols >= 4:
+                  item_id, entry_text, sentence, tags_str = row[:4]
+                  if tags_str:
+                    item_tags.extend([tag.strip() for tag in tags_str.split(',')])
+                else:
+                  logging.warning(f"Skipping row in CSV due to unexpected number of columns ({num_cols}): {row}")
+                  continue
+
+                if entry_text and sentence:
+                      sentences.append(
+                          SourceSentence(
+                              id=item_id,
+                            entry_text=entry_text,
+                            sentence=sentence,
+                              tags=item_tags
+                          )
+                      )
+                else:
+                  logging.warning(
+                    f"Skipping row in CSV due to missing entry_text or sentence after processing: {row}")
+
         except FileNotFoundError:
             logging.error(f"Error: CSV file not found at {self.file_path}")
         except Exception as e:
