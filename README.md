@@ -1,4 +1,6 @@
-# Todoist to Anki Sentence Miner
+# Todoist/CSV to Anki Sentence Miner
+
+![banner](assets/banner.jpg)
 
 This script automates the process of creating Anki flashcards from words saved in a Todoist project. It fetches tasks, gets word definitions and example sentences using an LLM, and then generates a complete Anki deck package (`.apkg`) ready for import.
 
