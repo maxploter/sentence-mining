@@ -75,7 +75,7 @@ The architecture has evolved to be highly modular and testable, employing a laye
     TODOIST_API_KEY="YOUR_TODOIST_API_KEY"
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
     ```
-    If `DATA_SOURCE_TYPE` is set to `"csv"`, the script will look for a `words.csv` file in the project's root directory. The `words.csv` file should have the following header and format:
+    If you are using the `csv` data source, you will need to provide a CSV file. The file should have the following header and format:
     ```csv
     id,entry_text,sentence,tags
     unique_id_1,your_word_or_phrase,The full sentence containing your word or phrase.,"Tag1,Source::BookTitle"
