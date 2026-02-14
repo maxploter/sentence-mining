@@ -137,3 +137,187 @@ The application implements a flexible tagging system for Anki notes, combining t
 python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
 python main.py --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
 ```
+
+# Cron Job Setup Instructions
+
+## Step 1: Make the Bash Script Executable
+
+First, you need to give the bash script execute permissions:
+
+```bash
+chmod +x /path/to/your/project/sentence_miner_todoist.sh
+```
+
+Replace `/path/to/your/project/` with the actual path to your project directory.
+
+## Step 2: Test the Script Manually
+
+Before setting up the cron job, test that the script works correctly:
+
+```bash
+/path/to/your/project/sentence_miner_todoist.sh
+```
+
+This should:
+1. Activate your virtual environment
+2. Run the main script with the todoist source
+3. Generate the Anki deck
+4. Log completion to `cron.log`
+
+## Step 3: Open Crontab Editor
+
+Open your crontab file for editing:
+
+```bash
+crontab -e
+```
+
+If this is your first time, you may be asked to choose an editor. Select your preferred editor (nano is easiest for beginners).
+
+## Step 4: Add the Cron Job
+
+Add one of the following lines to schedule your job:
+
+### Run Daily at 7:00 AM
+```
+0 7 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+```
+
+### Run Every 6 Hours
+```
+0 */6 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+```
+
+### Run Every Day at 10:00 PM
+```
+0 22 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+```
+
+### Run Twice Daily (8 AM and 8 PM)
+```
+0 8,20 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+```
+
+**Important:** Replace `/path/to/your/project/` with your actual project path in both places.
+
+## Step 5: Save and Exit
+
+- If using **nano**: Press `Ctrl+X`, then `Y`, then `Enter`
+- If using **vim**: Press `Esc`, type `:wq`, then `Enter`
+
+## Step 6: Verify the Cron Job
+
+Check that your cron job was added successfully:
+
+```bash
+crontab -l
+```
+
+This should display all your scheduled cron jobs, including the one you just added.
+
+## Understanding Cron Syntax
+
+The cron time format is: `minute hour day month day_of_week`
+
+```
+* * * * * command
+│ │ │ │ │
+│ │ │ │ └─── Day of week (0-7, both 0 and 7 are Sunday)
+│ │ │ └──────── Month (1-12)
+│ │ └───────────── Day of month (1-31)
+│ └────────────────── Hour (0-23)
+└─────────────────────── Minute (0-59)
+```
+
+Examples:
+- `0 7 * * *` - Every day at 7:00 AM
+- `*/30 * * * *` - Every 30 minutes
+- `0 */4 * * *` - Every 4 hours
+- `0 9 * * 1` - Every Monday at 9:00 AM
+- `0 0 1 * *` - First day of every month at midnight
+
+## Troubleshooting
+
+### Check if Cron is Running
+```bash
+sudo systemctl status cron
+```
+
+### View Cron Logs
+On most systems:
+```bash
+grep CRON /var/log/syslog
+```
+
+Or check your project's log file:
+```bash
+cat /path/to/your/project/cron.log
+```
+
+### Common Issues
+
+1. **Script doesn't run**: 
+   - Verify the script has execute permissions (`chmod +x`)
+   - Check that paths are absolute (not relative)
+   - Ensure the `.env` file exists in the project directory
+
+2. **Environment variables not loading**:
+   - The script automatically changes to the project directory before running
+   - Make sure your `.env` file is in the project root
+
+3. **Virtual environment issues**:
+   - Verify the venv exists at `venv/bin/activate`
+   - Test the script manually first
+
+### Testing Cron Job Timing
+
+To test if your cron job will run soon, you can temporarily set it to run in a few minutes:
+
+```bash
+# Get current time
+date
+
+# Edit crontab
+crontab -e
+
+# Add a test job that runs 2 minutes from now
+# For example, if it's 14:30, add:
+32 14 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+
+# Wait and check the log file
+tail -f /path/to/your/project/cron.log
+```
+
+## Disabling the Cron Job
+
+If you need to temporarily disable the cron job:
+
+```bash
+crontab -e
+```
+
+Then add a `#` at the beginning of the line to comment it out:
+
+```
+# 0 7 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+```
+
+To completely remove all cron jobs:
+
+```bash
+crontab -r
+```
+
+(Use with caution! This removes ALL your cron jobs.)
+
+## Additional Tips
+
+1. **Email Notifications**: By default, cron sends email on errors. To disable:
+   ```
+   MAILTO=""
+   0 7 * * * /path/to/your/project/sentence_miner_todoist.sh >> /path/to/your/project/cron.log 2>&1
+   ```
+
+2. **Multiple Environments**: If you have multiple Python projects, each should have its own bash script pointing to its own venv.
+
+3. **Backup Your Decks**: Consider setting up a separate cron job to backup your generated `.apkg` files periodically.
