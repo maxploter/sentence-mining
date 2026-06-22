@@ -12,13 +12,19 @@ class DuplicateNoteError(Exception):
     self.note_id = note_id
 
 class AnkiService:
-    def __init__(self, anki_repository: AnkiRepository, llm_service: LLMService):
+    def __init__(self, anki_repository: AnkiRepository, llm_service: LLMService, learning_language: str = "english"):
         self.repository = anki_repository
         self.llm_service = llm_service
+        self.learning_language = learning_language
 
-    @staticmethod
-    def _get_current_deck_name():
-        return config.ANKI_DECK_NAME
+    def _get_current_deck_name(self) -> str:
+        """Returns the Anki deck name for the current learning language.
+        English uses the flat base deck to keep existing cards untouched.
+        All other languages get a subdeck under the base deck.
+        """
+        if self.learning_language == "english":
+            return config.ANKI_DECK_NAME
+        return f"{config.ANKI_DECK_NAME}::{self.learning_language}"
 
     def _ensure_model(self):
         """

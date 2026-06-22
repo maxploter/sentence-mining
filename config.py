@@ -7,6 +7,7 @@ load_dotenv()
 # Secrets (loaded from .env file)
 TODOIST_API_KEY = os.getenv("TODOIST_API_KEY")
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY")
+NEBIUS_MODEL = os.getenv("NEBIUS_MODEL")
 
 # Configuration (can be changed here)
 TODOIST_PROJECT_NAME = "english-words"

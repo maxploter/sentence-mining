@@ -23,6 +23,8 @@ def test_end_to_end_flow(mocker):
     mock_args.csv_file = 'words.csv'
     mock_args.text_file = 'sentences.txt' # Default value for new text_file source
     mock_args.tags = 'CLI::Tag1,CLI::Tag2' # Simulate CLI tags
+    mock_args.learning_language = 'english'
+    mock_args.instruction_language = 'english'
     mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
 
     # 1. Mock Repositories (the external boundary of the app)
@@ -49,7 +51,7 @@ def test_end_to_end_flow(mocker):
     mock_mined_sentence_2 = SourceSentence(
         id='456',
         entry_text='english headspace',
-        sentence='So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.',
+        sentence="So I\'m checking my privilege here, acknowledging the fact that I\'m living a very comfortable life if I have the headspace to muse about these matters.",
         tags=['Source::MockCsv', 'Topic::Psychology'] # Tags from data source
     )
     # Add a new sentence for testing the single-sentence case
@@ -109,7 +111,7 @@ def test_end_to_end_flow(mocker):
     mocker.patch('anki_service.AnkiService._create_cloze_sentence', side_effect=[
       'This sentence contains the {{c1::test word}}.',  # Original sentence 1 cloze
       'Another sentence with the {{c1::test word}}.',  # Generated sentence 1 cloze
-      'So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the {{c1::headspace}} to muse about these matters.',
+      "So I\'m checking my privilege here, acknowledging the fact that I\'m living a very comfortable life if I have the {{c1::headspace}} to muse about these matters.",
       # Original sentence 2 cloze
       'A generated sentence for {{c1::headspace}}.',  # Generated sentence 2 cloze
       'The beauty of a sunset is often {{c1::ephemeral}}.',  # Original sentence 3 cloze
@@ -133,7 +135,7 @@ def test_end_to_end_flow(mocker):
 
     # 6. Assertions
     # Assert that the external-facing repositories and handlers were called correctly
-    expected_script_tags = ['Year::2026', 'Month::01']
+    expected_script_tags = ['Year::2026', 'Month::01', 'Lang::English']
     expected_cli_tags = ['CLI::Tag1', 'CLI::Tag2']
 
     # Verify Anki repository calls
@@ -205,7 +207,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that provides concise definitions.',
 
-        '\n        Please provide a concise definition for the word or phrase "test word".\n        \n        The word appeared in the following context:\n        ---\n        This sentence contains the test word.\n        ---\n        Based on this context, what is the most likely meaning of "test word"?\n            \n        Provide only the definition, without any extra text or explanations.\n        '
+        '\n        Please provide a concise definition for the word or phrase "test word".\n        \n        The word appeared in the following context:\n        ---\n        This sentence contains the test word.\n        ---\n        Based on this context, what is the most likely meaning of "test word"?\n            \n        Provide only the definition, without any extra text or explanations.\n        Write the definition in english.\n        '
 
       ),
 
@@ -215,7 +217,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that generates an example sentence.',
 
-        '\n        The word is "test word".\n        Its definition is: "a word for testing".\n        \n        It appeared in the original context: "This sentence contains the test word.".\n            \n        Please generate one new, distinct sentence using the word "test word".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        '
+        '\n        The word is "test word".\n        Its definition is: "a word for testing".\n        \n        It appeared in the original context: "This sentence contains the test word.".\n            \n        Please generate one new, distinct sentence using the word "test word".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        Write the sentence in english.\n        '
 
       ),
 
@@ -225,7 +227,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that provides concise definitions.',
 
-        '\n        Please provide a concise definition for the word or phrase "headspace".\n        \n        The word appeared in the following context:\n        ---\n        So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.\n        ---\n        Based on this context, what is the most likely meaning of "headspace"?\n            \n        Provide only the definition, without any extra text or explanations.\n        '
+        '\n        Please provide a concise definition for the word or phrase "headspace".\n        \n        The word appeared in the following context:\n        ---\n        So I\'m checking my privilege here, acknowledging the fact that I\'m living a very comfortable life if I have the headspace to muse about these matters.\n        ---\n        Based on this context, what is the most likely meaning of "headspace"?\n            \n        Provide only the definition, without any extra text or explanations.\n        Write the definition in english.\n        '
 
       ),
 
@@ -235,7 +237,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that generates an example sentence.',
 
-        '\n        The word is "headspace".\n        Its definition is: "the mental space for something".\n        \n        It appeared in the original context: "So I’m checking my privilege here, acknowledging the fact that I’m living a very comfortable life if I have the headspace to muse about these matters.".\n            \n        Please generate one new, distinct sentence using the word "headspace".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        '
+        '\n        The word is "headspace".\n        Its definition is: "the mental space for something".\n        \n        It appeared in the original context: "So I\'m checking my privilege here, acknowledging the fact that I\'m living a very comfortable life if I have the headspace to muse about these matters.".\n            \n        Please generate one new, distinct sentence using the word "headspace".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        Write the sentence in english.\n        '
 
       ),
 
@@ -245,7 +247,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that provides concise definitions.',
 
-        '\n        Please provide a concise definition for the word or phrase "ephemeral".\n        \n        The word appeared in the following context:\n        ---\n        The beauty of a sunset is often ephemeral.\n        ---\n        Based on this context, what is the most likely meaning of "ephemeral"?\n            \n        Provide only the definition, without any extra text or explanations.\n        '
+        '\n        Please provide a concise definition for the word or phrase "ephemeral".\n        \n        The word appeared in the following context:\n        ---\n        The beauty of a sunset is often ephemeral.\n        ---\n        Based on this context, what is the most likely meaning of "ephemeral"?\n            \n        Provide only the definition, without any extra text or explanations.\n        Write the definition in english.\n        '
 
       ),
 
@@ -255,7 +257,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that generates an example sentence.',
 
-        '\n        The word is "ephemeral".\n        Its definition is: "lasting for a very short time".\n        \n        It appeared in the original context: "The beauty of a sunset is often ephemeral.".\n            \n        Please generate one new, distinct sentence using the word "ephemeral".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        '
+        '\n        The word is "ephemeral".\n        Its definition is: "lasting for a very short time".\n        \n        It appeared in the original context: "The beauty of a sunset is often ephemeral.".\n            \n        Please generate one new, distinct sentence using the word "ephemeral".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        Write the sentence in english.\n        '
 
       ),
 
@@ -265,7 +267,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that provides concise definitions.',
 
-        '\n        Please provide a concise definition for the word or phrase "wordonly".\n        \n        What is the most likely meaning of "wordonly"?\n            \n        Provide only the definition, without any extra text or explanations.\n        '
+        '\n        Please provide a concise definition for the word or phrase "wordonly".\n        \n        What is the most likely meaning of "wordonly"?\n            \n        Provide only the definition, without any extra text or explanations.\n        Write the definition in english.\n        '
 
       ),
 
@@ -275,7 +277,7 @@ def test_end_to_end_flow(mocker):
 
         'You are a helpful assistant that generates an example sentence.',
 
-        '\n        The word is "wordonly".\n        Its definition is: "a word used for testing when no original sentence is provided".\n        \n        Please generate one new, distinct sentence using the word "wordonly".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        '
+        '\n        The word is "wordonly".\n        Its definition is: "a word used for testing when no original sentence is provided".\n        \n        Please generate one new, distinct sentence using the word "wordonly".\n        The sentence should be easy to understand and a.\n        Return only the sentence.\n        Write the sentence in english.\n        '
 
       ),
 
@@ -326,7 +328,8 @@ def test_duplicate_note_raises_error_and_calls_on_error(mocker, card_status):
   and the task completion handler's on_error is called, regardless of card status.
   """
   # Common setup
-  mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
+  mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None,
+                        learning_language='english', instruction_language='english')
   mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
   mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
 
@@ -382,7 +385,8 @@ def test_duplicate_note_raises_error_and_calls_on_error_learned_card(mocker):
   and the task completion handler's on_error is called.
   """
   # Common setup
-  mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None)
+  mock_args = MagicMock(source='todoist', csv_file=None, text_file=None, tags=None,
+                        learning_language='english', instruction_language='english')
   mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
   mocker.patch('main.datetime.datetime', MagicMock(now=MagicMock(return_value=datetime.datetime(2026, 1, 18))))
 

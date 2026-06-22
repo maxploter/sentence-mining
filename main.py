@@ -3,6 +3,8 @@ import datetime
 import logging  # Import the logging module
 from typing import Optional, List
 
+from languages import normalize_language, DEFAULT_LEARNING_LANGUAGE, DEFAULT_INSTRUCTION_LANGUAGE
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -29,7 +31,9 @@ def run_process(
     llm_service: LLMService,
     anki_service: AnkiService,
     task_completion_handler: TaskCompletionHandler,
-    cli_tags: Optional[List[str]] = None, # New argument for CLI tags
+    cli_tags: Optional[List[str]] = None,
+    learning_language: str = DEFAULT_LEARNING_LANGUAGE,
+    instruction_language: str = DEFAULT_INSTRUCTION_LANGUAGE,
 ):
     """
     Main function to run the sentence mining process.
@@ -43,9 +47,13 @@ def run_process(
         logging.error(f"AnkiConnect initialization failed: {e}. Exiting.")
         return
 
-    # Generate script-generated tags (e.g., Year, Month)
+    # Generate script-generated tags (e.g., Year, Month, Lang)
     now = datetime.datetime.now()
-    script_generated_tags = [f"Year::{now.year}", f"Month::{now.month:02d}"]
+    script_generated_tags = [
+        f"Year::{now.year}",
+        f"Month::{now.month:02d}",
+        f"Lang::{learning_language.capitalize()}",
+    ]
 
     # 2. Fetch sentences from the data source
     mined_sentences = sentence_source.fetch_sentences()
@@ -109,14 +117,14 @@ def run_process(
         final_tags_list = list(final_tags)
 
         # b. Get definition from LLM
-        definition = llm_service.get_definition(clean_word, sentence1)
+        definition = llm_service.get_definition(clean_word, sentence1, instruction_language)
         if not definition:
           task_completion_handler.on_error(item.id, f"Could not get definition for '{clean_word}'.", None)
           continue
         logging.info(f"Definition for '{clean_word}': {definition}")
 
         # c. Generate second sentence from LLM
-        sentence2 = llm_service.generate_sentence(clean_word, definition, sentence1)
+        sentence2 = llm_service.generate_sentence(clean_word, definition, sentence1, learning_language)
         if not sentence2:
             logging.warning(f"Could not generate a sentence for '{clean_word}' (ID: {item.id}). Skipping.")
             task_completion_handler.on_error(item.id, f"Could not generate a sentence for '{clean_word}'.", None)
@@ -170,7 +178,10 @@ def main():
     Composition root of the application.
     Initializes repositories, services, data sources, and runs the main process.
     """
-    parser = argparse.ArgumentParser(description="Create Anki flashcards from various sources.")
+    parser = argparse.ArgumentParser(
+        description="Create Anki flashcards from various sources.",
+        allow_abbrev=False,
+    )
     parser.add_argument(
         '--source',
         type=str,
@@ -193,7 +204,34 @@ def main():
         type=str,
         help='Comma-separated tags to add to generated Anki notes (e.g., "Topic::Literature,Critical").'
     )
+    parser.add_argument(
+        '--learning-language',
+        type=str,
+        default=DEFAULT_LEARNING_LANGUAGE,
+        help=(
+            'Language being learned: the language of the word and generated example sentence. '
+            'Accepts ISO 639-1 codes (en, et, ru) or long names (english, estonian, russian). '
+            f'Default: {DEFAULT_LEARNING_LANGUAGE}.'
+        ),
+    )
+    parser.add_argument(
+        '--instruction-language',
+        type=str,
+        default=DEFAULT_INSTRUCTION_LANGUAGE,
+        help=(
+            'Language used to explain the word (definition, translation, gloss). '
+            'Accepts ISO 639-1 codes (en, et, ru) or long names (english, estonian, russian). '
+            f'Default: {DEFAULT_INSTRUCTION_LANGUAGE}.'
+        ),
+    )
     args = parser.parse_args()
+
+    # Normalize and validate language flags early so bad values fail fast.
+    try:
+        learning_language = normalize_language(args.learning_language)
+        instruction_language = normalize_language(args.instruction_language)
+    except ValueError as e:
+        parser.error(str(e))
 
     # 0. Initialize Repositories (infrastructure layer)
     todoist_repo = TodoistRepository()
@@ -204,7 +242,7 @@ def main():
     word_processor = WordProcessor()
     llm_service = LLMService(llm_repo)
     # AnkiService needs both AnkiRepository and LLMService for cloze fallback
-    anki_service = AnkiService(anki_repo, llm_service) 
+    anki_service = AnkiService(anki_repo, llm_service, learning_language=learning_language)
 
     # 2. Initialize SentenceSource and TaskCompletionHandler based on arguments
     sentence_source: SentenceSource
@@ -233,7 +271,9 @@ def main():
         llm_service,
         anki_service,
         task_completion_handler,
-        cli_tags=cli_tags_list, # Pass CLI tags to run_process
+        cli_tags=cli_tags_list,
+        learning_language=learning_language,
+        instruction_language=instruction_language,
     )
 
 if __name__ == "__main__":

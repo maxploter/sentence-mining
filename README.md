@@ -9,12 +9,10 @@ This script automates the process of creating Anki flashcards from words saved i
 - **Todoist Integration**: Pulls tasks from a specified Todoist project.
 - **Flexible Word Parsing**: Extracts words from task titles like `{word}`, `English {word}`, or just `word`.
 - **AI-Powered Definitions**: Uses an LLM to get context-aware definitions for each word.
-*   **AI-Powered Sentence Generation**: Generates three unique example sentences for each word.
-- **Anki Card Generation**: Creates multiple card types for comprehensive learning:
-    - Word -> Definition
-    - Definition -> Word
-    - Sentence Cloze (Gap-fill)
-    - Sentence Cloze (Multiple Choice)
+- **AI-Powered Sentence Generation**: Generates an example sentence for each word.
+- **Multi-language support**: Build decks for any language (Estonian, Russian, …) via `--learning-language`; control the language of definitions separately via `--instruction-language`.
+- **Anki Card Generation**: Creates cloze-deletion flashcards via AnkiConnect.
+- **Per-language subdecks**: English cards go into `sentence-mining`; other languages into `sentence-mining::<language>` (e.g. `sentence-mining::estonian`).
 - **Secure**: Uses a `.env` file to keep your API keys safe.
 - **Automation-Ready**: Can be easily set up with a cron job to run automatically.
 
@@ -64,17 +62,55 @@ The script loads your API keys from a `.env` file.
     ```
     TODOIST_API_KEY="YOUR_TODOIST_API_KEY"
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
+
+    # Optional: override the Nebius model without touching code.
+    # Default is openai/gpt-oss-120b (the 20b model was retired April 2026).
+    NEBIUS_MODEL="openai/gpt-oss-120b"
     ```
 
 ## Usage
 
-To run the script manually, simply execute the `main.py` file:
+Make sure Anki is open and running, then execute `main.py`:
 
 ```bash
-python main.py
+python main.py [--source <todoist|csv|text_file>] \
+               [--csv-file <path>] \
+               [--text-file <path>] \
+               [--tags <tag1,tag2,...>] \
+               [--learning-language <code|name>] \
+               [--instruction-language <code|name>]
 ```
 
-The script will generate an Anki deck file named `English Vocabulary.apkg` (or as configured in `config.py`) in the project directory.
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--source` | `todoist` | Input source: `todoist`, `csv`, or `text_file` |
+| `--csv-file` | — | Path to CSV file (required when `--source csv`) |
+| `--text-file` | — | Path to text file (required when `--source text_file`) |
+| `--tags` / `-t` | — | Comma-separated tags added to every note in the run |
+| `--learning-language` | `english` | Language of the word and generated example sentence. Accepts ISO 639-1 codes (`en`, `et`, `ru`) or full names. |
+| `--instruction-language` | `english` | Language of the definition/explanation. Accepts the same codes/names. |
+
+**Examples:**
+
+```bash
+# Default: Todoist source, English (cron-safe, existing behavior unchanged)
+python main.py
+
+# Estonian CSV → Estonian deck + English definitions (default)
+python main.py --source csv --csv-file estonian_words.csv --learning-language et
+
+# Estonian CSV → Estonian deck + Russian definitions
+python main.py --source csv --csv-file estonian_words.csv \
+               --learning-language et --instruction-language ru
+
+# English book import with tags
+python main.py --source csv --csv-file my_book.csv \
+               --tags "Source::MyBook,Topic::History,Type::Book"
+```
+
+Cards are created via AnkiConnect into the `sentence-mining` deck (english) or `sentence-mining::<language>` subdecks for other languages.
 
 ## Automation with Cron Job
 
@@ -136,6 +172,7 @@ The application implements a flexible tagging system for Anki notes, combining t
 ```bash
 python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
 python main.py --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
+python main.py --source csv --csv-file csv-files/book-project-hail-mari-until-page62.csv --tags "Source::Project_Hail_Mary,Topic::SciFi,Type::Book"
 ```
 
 # Cron Job Setup Instructions

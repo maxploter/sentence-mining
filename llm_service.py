@@ -20,9 +20,10 @@ class LLMService:
         text = re.sub(r'\*(.*?)\*', r'\1', text)
         return text
 
-    def get_definition(self, word, context):
+    def get_definition(self, word, context, instruction_language="english"):
         """
         Gets the definition of a word using an LLM, based on the context.
+        instruction_language: language the definition should be written in.
         """
         system_prompt = "You are a helpful assistant that provides concise definitions."
 
@@ -44,12 +45,14 @@ class LLMService:
         Please provide a concise definition for the word or phrase "{word}".
         {context_block}
         Provide only the definition, without any extra text or explanations.
+        Write the definition in {instruction_language}.
         """
         return self.llm_repository.ask(system_prompt, user_prompt)
 
-    def generate_sentence(self, word, definition, context):
+    def generate_sentence(self, word, definition, context, learning_language="english"):
         """
         Generates one example sentence for a word.
+        learning_language: language the generated sentence should be written in.
         """
         system_prompt = "You are a helpful assistant that generates an example sentence."
 
@@ -66,6 +69,7 @@ class LLMService:
         Please generate one new, distinct sentence using the word "{word}".
         The sentence should be easy to understand and a.
         Return only the sentence.
+        Write the sentence in {learning_language}.
         """
         return self.llm_repository.ask(system_prompt, user_prompt)
 
