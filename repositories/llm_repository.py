@@ -13,7 +13,9 @@ class LLMRepository:
             base_url="https://api.tokenfactory.nebius.com/v1/",
             api_key=config.NEBIUS_API_KEY
         )
-        self.model = config.NEBIUS_MODEL or "openai/gpt-oss-120b"
+        if not config.NEBIUS_MODEL:
+            raise ValueError("NEBIUS_MODEL env var is not set. Set it in your .env file.")
+        self.model = config.NEBIUS_MODEL
 
     @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     def ask(self, system_prompt, user_prompt):
