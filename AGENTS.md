@@ -75,10 +75,6 @@ The architecture has evolved to be highly modular and testable, employing a laye
     ```ini
     TODOIST_API_KEY="YOUR_TODOIST_API_KEY"
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
-
-    # Optional: override the Nebius model id without touching code.
-    # Default is openai/gpt-oss-120b (openai/gpt-oss-20b was retired April 2026).
-    NEBIUS_MODEL="openai/gpt-oss-120b"
     ```
     To use a CSV source, pass `--source csv --csv-file <path>` at runtime (see below).
     The `words.csv` file should have the following header and format:
@@ -95,10 +91,12 @@ The architecture has evolved to be highly modular and testable, employing a laye
 6.  **Run the Script:**
     Make sure Anki is open and running on your machine, then execute:
     ```bash
-    python main.py [--source <todoist|csv|text_file>] [--csv-file <path>] [--text-file <path>] \
+    python main.py --model <model-id> \
+                   [--source <todoist|csv|text_file>] [--csv-file <path>] [--text-file <path>] \
                    [--tags <tag1,tag2,...>] \
                    [--learning-language <code|name>] [--instruction-language <code|name>]
     ```
+    *   `--model`: **Required.** Nebius model id to use. Recommended: `openai/gpt-oss-120b`.
     *   `--source`: Specifies the data source type. Can be `todoist` (default), `csv`, or `text_file`.
     *   `--csv-file`: Required if `--source csv` is used. Specifies the path to your CSV file (e.g., `words.csv`).
     *   `--text-file`: Required if `--source text_file` is used. Specifies the path to your plain text file (e.g., `sentences.txt`).
@@ -107,23 +105,23 @@ The architecture has evolved to be highly modular and testable, employing a laye
     *   `--instruction-language`: Language used to write the definition/explanation on the card. Accepts the same codes/names. Default: `english` (fixed, regardless of `--learning-language`).
 
     **Examples:**
-    *   **Using Todoist (default):**
+    *   **Using Todoist:**
         ```bash
-        python main.py
+        python main.py --model "openai/gpt-oss-120b" --source todoist
         ```
     *   **Using CSV file with batch tags:**
         ```bash
-        python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History"
+        python main.py --model "openai/gpt-oss-120b" --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History"
         ```
     *   **Using a plain text file:**
         ```bash
-        python main.py --source text_file --text-file my_sentences.txt --tags "Type::Reading,Functional::NewWords"
+        python main.py --model "openai/gpt-oss-120b" --source text_file --text-file my_sentences.txt --tags "Type::Reading,Functional::NewWords"
         ```
     
     Cards are created in Anki via AnkiConnect. The target deck is language-aware (see `AnkiService._get_current_deck_name()`):
     - `--learning-language english` (default) → flat deck `sentence-mining` (existing cards untouched).
     - Any other language → subdeck `sentence-mining::<language>` (e.g. `sentence-mining::estonian`).
-    All cards also receive an auto-generated `Lang::<Language>` tag (e.g. `Lang::Estonian`) in addition to the date tags.
+    All cards also receive an auto-generated `InstructionLanguage::<Language>` tag (e.g. `InstructionLanguage::English`) reflecting the language used to write the definition on the card. The learning language is already encoded in the deck name, so no separate `Lang::` tag is needed.
 
 ## Development Conventions
 
@@ -148,7 +146,7 @@ The architecture has evolved to be highly modular and testable, employing a laye
 
     **Recommended Tag Structure:**
 
-    *   **Time**: `Year::YYYY` (e.g., `Year::2026`), `Month::MM` (e.g., `Month::01`), and `Lang::<Language>` (e.g., `Lang::English`, `Lang::Estonian`). These are all automatically generated.
+    *   **Time**: `Year::YYYY` (e.g., `Year::2026`), `Month::MM` (e.g., `Month::01`), and `InstructionLanguage::<Language>` (e.g., `InstructionLanguage::English`, `InstructionLanguage::Estonian`). These are all automatically generated.
     *   **Source Type**: `Type::Book`, `Type::News`, `Type::Podcast`, etc. (e.g., `Type::Book` from a CSV or text file, `Type::Todoist` for Todoist tasks).
     *   **Specific Source**: `Source::BookName`, `Source::NewspaperName`, `Source::PodcastName` (e.g., `Source::Harry_Potter`, `Source::New_Yorker`, `Source::NPR_Podcast`). This can be added via command-line arguments for batch processing.
     *   **Subject/Domain**: `Topic::Tech`, `Topic::Finance`, `Topic::Literature`, `Topic::History`, etc.
@@ -165,8 +163,8 @@ The architecture has evolved to be highly modular and testable, employing a laye
 
     **Example Usage (Command Line):**
     ```bash
-    python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
-    python main.py --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
+    python main.py --model "openai/gpt-oss-120b" --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
+    python main.py --model "openai/gpt-oss-120b" --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
     ```
 *   **Configuration:** Application settings (like project names) and secrets are managed in `config.py`. Secrets are loaded from a `.env` file, which is ignored by version control.
 *   **Error Handling:** The script includes robust error handling, especially for network operations, using the `tenacity` library for automatic retries with exponential backoff. Tasks that fail during processing (e.g., due to an inability to create a cloze) are tagged in Todoist (if Todoist is the source) for manual review.

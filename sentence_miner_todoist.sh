@@ -13,7 +13,7 @@ cd "$SCRIPT_DIR"
 source venv/bin/activate
 
 # Run the main script with todoist source
-python main.py --source todoist
+python main.py --source todoist --model "openai/gpt-oss-120b"
 
 # Deactivate the virtual environment (optional, as the script will exit anyway)
 deactivate

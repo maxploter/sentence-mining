@@ -47,12 +47,12 @@ def run_process(
         logging.error(f"AnkiConnect initialization failed: {e}. Exiting.")
         return
 
-    # Generate script-generated tags (e.g., Year, Month, Lang)
+    # Generate script-generated tags (e.g., Year, Month, InstructionLanguage)
     now = datetime.datetime.now()
     script_generated_tags = [
         f"Year::{now.year}",
         f"Month::{now.month:02d}",
-        f"Lang::{learning_language.capitalize()}",
+        f"InstructionLanguage::{instruction_language.capitalize()}",
     ]
 
     # 2. Fetch sentences from the data source
@@ -224,6 +224,12 @@ def main():
             f'Default: {DEFAULT_INSTRUCTION_LANGUAGE}.'
         ),
     )
+    parser.add_argument(
+        '--model',
+        type=str,
+        required=True,
+        help='Nebius model id to use (e.g., openai/gpt-oss-120b). Required — no default.',
+    )
     args = parser.parse_args()
 
     # Normalize and validate language flags early so bad values fail fast.
@@ -235,7 +241,7 @@ def main():
 
     # 0. Initialize Repositories (infrastructure layer)
     todoist_repo = TodoistRepository()
-    llm_repo = LLMRepository()
+    llm_repo = LLMRepository(model=args.model)
     anki_repo = AnkiRepository()
 
     # 1. Initialize Services (application layer - business logic)

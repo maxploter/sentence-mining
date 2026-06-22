@@ -8,14 +8,14 @@ class LLMRepository:
     Repository for interacting with the Nebius AI LLM.
     This class is a thin wrapper around the openai client.
     """
-    def __init__(self):
+    def __init__(self, model: str):
         self.client = openai.OpenAI(
             base_url="https://api.tokenfactory.nebius.com/v1/",
-            api_key=config.NEBIUS_API_KEY
+            api_key=config.NEBIUS_API_KEY,
         )
-        if not config.NEBIUS_MODEL:
-            raise ValueError("NEBIUS_MODEL env var is not set. Set it in your .env file.")
-        self.model = config.NEBIUS_MODEL
+        if not model:
+            raise ValueError("A Nebius model id must be provided (pass --model).")
+        self.model = model
 
     @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     def ask(self, system_prompt, user_prompt):

@@ -135,7 +135,7 @@ def test_end_to_end_flow(mocker):
 
     # 6. Assertions
     # Assert that the external-facing repositories and handlers were called correctly
-    expected_script_tags = ['Year::2026', 'Month::01', 'Lang::English']
+    expected_script_tags = ['Year::2026', 'Month::01', 'InstructionLanguage::English']
     expected_cli_tags = ['CLI::Tag1', 'CLI::Tag2']
 
     # Verify Anki repository calls
