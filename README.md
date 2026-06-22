@@ -85,6 +85,7 @@ python main.py [--source <todoist|csv|text_file>] \
 
 | Flag | Default | Description |
 |---|---|---|
+| `--model` | — | **Required.** Nebius model ID (e.g. `openai/gpt-oss-120b`) |
 | `--source` | `todoist` | Input source: `todoist`, `csv`, or `text_file` |
 | `--csv-file` | — | Path to CSV file (required when `--source csv`) |
 | `--text-file` | — | Path to text file (required when `--source text_file`) |
@@ -95,18 +96,27 @@ python main.py [--source <todoist|csv|text_file>] \
 **Examples:**
 
 ```bash
-# Default: Todoist source, English (cron-safe, existing behavior unchanged)
-python main.py
+# Default: Todoist source, English
+python main.py --model openai/gpt-oss-120b
 
 # Estonian CSV → Estonian deck + English definitions (default)
-python main.py --source csv --csv-file estonian_words.csv --learning-language et
+python main.py --model openai/gpt-oss-120b \
+               --source csv --csv-file estonian_words.csv --learning-language et
+
+# Estonian CSV with tags (e.g. a specific book)
+python main.py --model openai/gpt-oss-120b \
+               --source csv --csv-file csv-files/my-estonian-book.csv \
+               --learning-language et \
+               --tags "Source::MyBook,Topic::Fiction,Type::Book"
 
 # Estonian CSV → Estonian deck + Russian definitions
-python main.py --source csv --csv-file estonian_words.csv \
+python main.py --model openai/gpt-oss-120b \
+               --source csv --csv-file estonian_words.csv \
                --learning-language et --instruction-language ru
 
 # English book import with tags
-python main.py --source csv --csv-file my_book.csv \
+python main.py --model openai/gpt-oss-120b \
+               --source csv --csv-file my_book.csv \
                --tags "Source::MyBook,Topic::History,Type::Book"
 ```
 
