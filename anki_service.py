@@ -19,11 +19,9 @@ class AnkiService:
 
     def _get_current_deck_name(self) -> str:
         """Returns the Anki deck name for the current learning language.
-        English uses the flat base deck to keep existing cards untouched.
-        All other languages get a subdeck under the base deck.
+        Every language gets its own subdeck under the base deck
+        (e.g. sentence-mining::english, sentence-mining::estonian).
         """
-        if self.learning_language == "english":
-            return config.ANKI_DECK_NAME
         return f"{config.ANKI_DECK_NAME}::{self.learning_language}"
 
     def _ensure_model(self):

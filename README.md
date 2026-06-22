@@ -12,7 +12,7 @@ This script automates the process of creating Anki flashcards from words saved i
 - **AI-Powered Sentence Generation**: Generates an example sentence for each word.
 - **Multi-language support**: Build decks for any language (Estonian, Russian, …) via `--learning-language`; control the language of definitions separately via `--instruction-language`.
 - **Anki Card Generation**: Creates cloze-deletion flashcards via AnkiConnect.
-- **Per-language subdecks**: English cards go into `sentence-mining`; other languages into `sentence-mining::<language>` (e.g. `sentence-mining::estonian`).
+- **Per-language subdecks**: Every language gets its own subdeck — `sentence-mining::<language>` (e.g. `sentence-mining::english`, `sentence-mining::estonian`). The root deck is an empty container.
 - **Secure**: Uses a `.env` file to keep your API keys safe.
 - **Automation-Ready**: Can be easily set up with a cron job to run automatically.
 
@@ -110,7 +110,7 @@ python main.py --source csv --csv-file my_book.csv \
                --tags "Source::MyBook,Topic::History,Type::Book"
 ```
 
-Cards are created via AnkiConnect into the `sentence-mining` deck (english) or `sentence-mining::<language>` subdecks for other languages.
+Cards are created via AnkiConnect into `sentence-mining::<language>` subdecks (e.g. `sentence-mining::english`, `sentence-mining::estonian`). The root `sentence-mining` deck is an empty container.
 
 ## Automation with Cron Job
 

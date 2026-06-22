@@ -119,8 +119,8 @@ The architecture has evolved to be highly modular and testable, employing a laye
         ```
     
     Cards are created in Anki via AnkiConnect. The target deck is language-aware (see `AnkiService._get_current_deck_name()`):
-    - `--learning-language english` (default) → flat deck `sentence-mining` (existing cards untouched).
-    - Any other language → subdeck `sentence-mining::<language>` (e.g. `sentence-mining::estonian`).
+    - Every language (including English) goes into `sentence-mining::<language>` (e.g. `sentence-mining::english`, `sentence-mining::estonian`).
+    - The root `sentence-mining` deck is an empty container; studying it reviews all languages together.
     All cards also receive an auto-generated `InstructionLanguage::<Language>` tag (e.g. `InstructionLanguage::English`) reflecting the language used to write the definition on the card. The learning language is already encoded in the deck name, so no separate `Lang::` tag is needed.
 
 ## Development Conventions

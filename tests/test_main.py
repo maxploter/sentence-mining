@@ -11,6 +11,7 @@ from main import main as main_func # Rename main to main_func to avoid conflict
 from domain.models import SourceSentence
 from domain.task_completion_handler import TaskCompletionHandler
 from datasources.todoist_source import TodoistTaskCompletionHandler
+from anki_service import AnkiService
 
 
 def test_end_to_end_flow(mocker):
@@ -371,7 +372,7 @@ def test_duplicate_note_raises_error_and_calls_on_error(mocker, card_status):
   # Ensure no updates were attempted
   mock_anki_repo.request.assert_has_calls([
     call('findNotes', {
-      'query': '"deck:sentence-mining" "note:English sentence-mining Model" "Word:duplicate word" "Definition:a word that already exists"'}),
+      'query': '"deck:sentence-mining::english" "note:English sentence-mining Model" "Word:duplicate word" "Definition:a word that already exists"'}),
     # No updateNoteFields or forgetCards calls
   ])
   assert not any(c.args[0] == 'updateNoteFields' for c in mock_anki_repo.request.call_args_list)
@@ -446,9 +447,24 @@ def test_duplicate_note_raises_error_and_calls_on_error_learned_card(mocker):
   # Ensure no updates or forgets were attempted
   mock_anki_repo.request.assert_has_calls([
     call('findNotes', {
-      'query': '"deck:sentence-mining" "note:English sentence-mining Model" "Word:duplicate word" "Definition:a word that already exists"'}),
+      'query': '"deck:sentence-mining::english" "note:English sentence-mining Model" "Word:duplicate word" "Definition:a word that already exists"'}),
     # No updateNoteFields or forgetCards calls
   ])
   assert not any(c.args[0] == 'updateNoteFields' for c in mock_anki_repo.request.call_args_list)
   assert not any(c.args[0] == 'forgetCards' for c in mock_anki_repo.request.call_args_list)
   assert not any(c.args[0] == 'addNote' for c in mock_anki_repo.request.call_args_list)
+
+
+@pytest.mark.parametrize("language,expected_deck", [
+    ("english", "sentence-mining::english"),
+    ("estonian", "sentence-mining::estonian"),
+    ("russian", "sentence-mining::russian"),
+])
+def test_get_current_deck_name(language, expected_deck):
+    """Every language, including english, maps to a sentence-mining::<language> subdeck."""
+    service = AnkiService(
+        anki_repository=MagicMock(),
+        llm_service=MagicMock(),
+        learning_language=language,
+    )
+    assert service._get_current_deck_name() == expected_deck
