@@ -1,5 +1,7 @@
 import logging  # Import the logging module
 
+import requests
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from todoist_api_python.api import TodoistAPI
 
 import config
@@ -30,10 +32,16 @@ class TodoistRepository:
             logging.error(f"Error fetching tasks from Todoist: {e}")
             return []
 
+    @retry(
+        retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError, TimeoutError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, max=10),
+        reraise=True,
+    )
     def complete_task(self, task_id):
         """
         Marks a task as complete in Todoist.
-        Raises an exception if the API call fails.
+        Retries up to 3 times on transient network errors, then re-raises.
         """
         try:
             is_success = self.api.complete_task(task_id=task_id)

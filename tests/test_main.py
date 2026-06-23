@@ -468,3 +468,128 @@ def test_get_current_deck_name(language, expected_deck):
         learning_language=language,
     )
     assert service._get_current_deck_name() == expected_deck
+
+
+def test_task_completion_failure_continues_batch(mocker):
+    """
+    When complete_task raises (e.g. a network timeout), the current item is skipped
+    but the remaining items in the batch are still processed. on_error must NOT be
+    called (that would add the error tag and exclude the item from the next run).
+    """
+    # Mock argparse
+    mock_args = MagicMock()
+    mock_args.source = 'todoist'
+    mock_args.csv_file = 'words.csv'
+    mock_args.text_file = 'sentences.txt'
+    mock_args.tags = None
+    mock_args.learning_language = 'english'
+    mock_args.instruction_language = 'english'
+    mocker.patch('argparse.ArgumentParser.parse_args', return_value=mock_args)
+
+    mock_llm_repo = MagicMock()
+    mock_todoist_repo = MagicMock()
+    mock_sentence_source = MagicMock()
+    mock_task_completion_handler = MagicMock(spec=TaskCompletionHandler)
+
+    # Two items: first times out on completion, second succeeds normally.
+    item_timeout = SourceSentence(id='t1', entry_text='english timeout_word',
+                                  sentence='A sentence about timeout_word.', tags=[])
+    item_ok = SourceSentence(id='t2', entry_text='english ok_word',
+                             sentence='A sentence about ok_word.', tags=[])
+    mock_sentence_source.fetch_sentences.return_value = [item_timeout, item_ok]
+
+    mock_llm_repo.ask.side_effect = [
+        'definition of timeout_word',
+        'Generated sentence for timeout_word.',
+        'definition of ok_word',
+        'Generated sentence for ok_word.',
+    ]
+
+    def anki_repo_side_effect(action, params=None):
+        if action == 'findNotes':
+            return []
+        elif action == 'addNote':
+            return {'noteId': 'mock_note_id'}
+        elif action in ('modelNames', 'deckNames', 'createModel', 'createDeck'):
+            return []
+        return None
+
+    mocker.patch('repositories.anki_repository.AnkiRepository.request',
+                 side_effect=anki_repo_side_effect)
+    mocker.patch('anki_service.AnkiService._create_cloze_sentence', side_effect=[
+        'A sentence about {{c1::timeout_word}}.',
+        'Generated sentence for {{c1::timeout_word}}.',
+        'A sentence about {{c1::ok_word}}.',
+        'Generated sentence for {{c1::ok_word}}.',
+    ])
+
+    # First call to complete_task raises; second succeeds.
+    mock_task_completion_handler.complete_task.side_effect = [
+        TimeoutError("Read timed out"),
+        None,
+    ]
+
+    mocker.patch('repositories.todoist_repository.TodoistRepository', return_value=mock_todoist_repo)
+    mocker.patch('main.LLMRepository', return_value=mock_llm_repo)
+    mocker.patch('main.TodoistSentenceSource', return_value=mock_sentence_source)
+    mocker.patch('main.TodoistTaskCompletionHandler', return_value=mock_task_completion_handler)
+    mocker.patch('main.CsvSentenceSource', return_value=MagicMock())
+    mocker.patch('main.TextFileSentenceSource', return_value=MagicMock())
+    mocker.patch('main.NoOpTaskCompletionHandler', return_value=MagicMock())
+
+    main_func()
+
+    # Both items should have had complete_task attempted.
+    assert mock_task_completion_handler.complete_task.call_count == 2
+    mock_task_completion_handler.complete_task.assert_any_call('t1')
+    mock_task_completion_handler.complete_task.assert_any_call('t2')
+
+    # on_error must NOT be called for the timed-out item — we must not tag it with
+    # the error label, as that would exclude it from the next run.
+    mock_task_completion_handler.on_error.assert_not_called()
+
+
+def test_todoist_repository_complete_task_retries_on_transient_error(mocker):
+    """
+    TodoistRepository.complete_task retries on transient network errors and
+    succeeds if the API call eventually returns True.
+    """
+    import sys
+    sys.path.insert(0, sys.path[0] + '/..')
+    from repositories.todoist_repository import TodoistRepository
+
+    mock_api = MagicMock()
+    # Fail twice with a timeout, then succeed.
+    mock_api.complete_task.side_effect = [
+        TimeoutError("timeout"),
+        TimeoutError("timeout"),
+        True,
+    ]
+
+    repo = TodoistRepository.__new__(TodoistRepository)
+    repo.api = mock_api
+
+    repo.complete_task('task_abc')  # Should not raise.
+
+    assert mock_api.complete_task.call_count == 3
+
+
+def test_todoist_repository_complete_task_raises_after_max_retries(mocker):
+    """
+    TodoistRepository.complete_task re-raises after exhausting all retries.
+    """
+    import sys
+    sys.path.insert(0, sys.path[0] + '/..')
+    from repositories.todoist_repository import TodoistRepository
+
+    mock_api = MagicMock()
+    mock_api.complete_task.side_effect = TimeoutError("timeout")
+
+    repo = TodoistRepository.__new__(TodoistRepository)
+    repo.api = mock_api
+
+    with pytest.raises((TimeoutError, Exception)):
+        repo.complete_task('task_xyz')
+
+    # 3 attempts total (initial + 2 retries).
+    assert mock_api.complete_task.call_count == 3

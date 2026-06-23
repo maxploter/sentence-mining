@@ -165,8 +165,11 @@ def run_process(
             logging.info(f"Completing task for '{clean_word}' (ID: {item.id})...")
             task_completion_handler.complete_task(item.id)
         except Exception as e:
-            logging.error(f"Error completing task for '{clean_word}' (ID: {item.id}): {e}. Halting.")
-            return
+            logging.warning(
+                f"Could not complete task for '{clean_word}' (ID: {item.id}) after retries: {e}. "
+                f"Note was already added to Anki; leaving task open for the next run."
+            )
+            continue
 
         logging.info(f"--- Finished item for '{clean_word}' ---")
 
