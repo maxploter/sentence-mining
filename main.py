@@ -117,7 +117,7 @@ def run_process(
         final_tags_list = list(final_tags)
 
         # b. Get definition from LLM
-        definition = llm_service.get_definition(clean_word, sentence1, instruction_language)
+        definition = llm_service.get_definition(clean_word, sentence1, instruction_language, learning_language)
         if not definition:
           task_completion_handler.on_error(item.id, f"Could not get definition for '{clean_word}'.", None)
           continue

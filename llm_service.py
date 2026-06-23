@@ -2,6 +2,24 @@ import re
 
 from repositories.llm_repository import LLMRepository
 
+_DEFINITION_EXTRAS: dict[str, str] = {
+    "estonian": (
+        "Additionally, provide the principal forms (põhivormid) of the word:\n"
+        "- If it is a verb: give the ma-infinitive and da-infinitive "
+        "(e.g. 'tegema / teha').\n"
+        "- If it is a noun: give the nominative singular, genitive singular, "
+        "partitive singular, and partitive plural "
+        "(e.g. 'raamat / raamatu / raamatut / raamatuid').\n"
+        "- If it is another part of speech: skip the forms.\n"
+        "Write the forms themselves in Estonian (they are Estonian surface forms), "
+        "but label them in the instruction language."
+    ),
+}
+
+
+def get_definition_extras(language: str) -> str:
+    return _DEFINITION_EXTRAS.get(language, "")
+
 
 class LLMService:
     def __init__(self, llm_repository: LLMRepository):
@@ -20,10 +38,12 @@ class LLMService:
         text = re.sub(r'\*(.*?)\*', r'\1', text)
         return text
 
-    def get_definition(self, word, context, instruction_language="english"):
+    def get_definition(self, word, context, instruction_language="english", learning_language="english"):
         """
         Gets the definition of a word using an LLM, based on the context.
         instruction_language: language the definition should be written in.
+        learning_language: language of the word being defined; used to inject
+            per-language morphology guidance (e.g. Estonian põhivormid).
         """
         system_prompt = "You are a helpful assistant that provides concise definitions."
 
@@ -41,10 +61,13 @@ class LLMService:
         What is the most likely meaning of "{word}"?
             """
 
+        extras = get_definition_extras(learning_language)
+        extras_block = f"\n        {extras}\n" if extras else ""
+
         user_prompt = f"""
         Please provide a concise definition for the word or phrase "{word}".
         {context_block}
-        Provide only the definition, without any extra text or explanations.
+        Provide only the definition, without any extra text or explanations.{extras_block}
         Write the definition in {instruction_language}.
         """
         return self.llm_repository.ask(system_prompt, user_prompt)
