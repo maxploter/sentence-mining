@@ -2,7 +2,7 @@
 
 ![banner](assets/banner.jpg)
 
-This script automates the process of creating Anki flashcards from words saved in a Todoist project. It fetches tasks, gets word definitions and example sentences using an LLM, and then generates a complete Anki deck package (`.apkg`) ready for import.
+This script automates the process of creating Anki flashcards from words saved in a Todoist project (or a CSV/text file). It fetches items, gets word definitions and example sentences using an LLM, and creates the notes directly in Anki via AnkiConnect.
 
 ## Features
 
@@ -62,18 +62,16 @@ The script loads your API keys from a `.env` file.
     ```
     TODOIST_API_KEY="YOUR_TODOIST_API_KEY"
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
-
-    # Optional: override the Nebius model without touching code.
-    # Default is openai/gpt-oss-120b (the 20b model was retired April 2026).
-    NEBIUS_MODEL="openai/gpt-oss-120b"
     ```
+    The Nebius model is chosen at runtime with the required `--model` flag (see below) — there is no env var or code default.
 
 ## Usage
 
 Make sure Anki is open and running, then execute `main.py`:
 
 ```bash
-python main.py [--source <todoist|csv|text_file>] \
+python main.py --model <model-id> \
+               [--source <todoist|csv|text_file>] \
                [--csv-file <path>] \
                [--text-file <path>] \
                [--tags <tag1,tag2,...>] \
@@ -122,6 +120,24 @@ python main.py --model openai/gpt-oss-120b \
 
 Cards are created via AnkiConnect into `sentence-mining::<language>` subdecks (e.g. `sentence-mining::english`, `sentence-mining::estonian`). The root `sentence-mining` deck is an empty container.
 
+## CSV File Format
+
+`CsvSentenceSource` skips the header row and infers columns purely from count, so header text is a label only — get the column count right and any header works:
+
+| Columns | Layout | Notes |
+|---|---|---|
+| 2 | `word,context` | Recommended. Tags come from `--tags` on the CLI, applied to every row. This is what every file in `csv-files/` uses. |
+| 3 | `id,word,context` | Adds a per-row id (logging only; CSV rows are never marked "complete"). |
+| 4 | `id,word,context,tags` | Adds a per-row tags column, comma-separated. **Must be quoted** if it contains more than one tag (`"Tag1,Tag2"`) — an unquoted multi-tag cell overflows into extra columns and silently drops everything past the 4th. |
+
+`word` can be a single word or a multi-word phrase/idiom (e.g. `beat the bushes`) — no special markup needed, it's used verbatim. Quote any `context` cell that contains a comma. Example (2-column form):
+
+```csv
+word,context
+gruesome,"If you use it without paying careful attention, the result can be gruesome."
+horse sense,"But also the horse sense to work things out on the fly."
+```
+
 ## Automation with Cron Job
 
 You can automate the script to run at regular intervals using a cron job.
@@ -144,18 +160,14 @@ You can automate the script to run at regular intervals using a cron job.
 
 ## Development Process
 
-This script was developed with a modular approach to separate concerns and make the code easier to maintain and extend.
+This script follows a layered architecture to separate concerns and make the code easier to maintain and extend (see `AGENTS.md` for the full breakdown).
 
-1.  **Project Scaffolding**: The project structure was created with separate files for each service (`todoist_service.py`, `llm_service.py`, `anki_service.py`), a main entry point (`main.py`), and a configuration file (`config.py`).
-2.  **Dependency Management**: A `requirements.txt` file was created to list all necessary libraries (`todoist-api-python`, `openai`, `genanki`, `python-dotenv`).
-3.  **Configuration**: A `config.py` file was set up to handle both static configuration (like project and deck names) and secrets.
-4.  **Services Implementation**:
-    *   `todoist_service.py`: Implemented functions to connect to the Todoist API, fetch tasks from a specific project, and parse word from task titles.
-    *   `llm_service.py`: Implemented functions to interact with the Nebius API to get definitions and generate example sentences, with carefully crafted prompts for each task.
-    *   `anki_service.py`: Implemented logic to create Anki models, decks, and notes using the `genanki` library. This includes setting up different card templates, including cloze deletions.
-5.  **Main Orchestrator**: The `main.py` script was created to orchestrate the entire workflow, from fetching tasks to saving the final Anki deck.
-6.  **Security**: To protect sensitive API keys, the script was refactored to load secrets from a `.env` file, which is ignored by Git. `python-dotenv` was added to manage this.
-7.  **Refinements**: The code was iteratively improved. For instance, the LLM API calls were updated to the latest syntax for Nebius, and the Anki cloze deletion logic was corrected to use the proper formatting.
+1.  **Domain layer** (`domain/`): core entities and interfaces — `SourceSentence`, `SentenceSource`, `TaskCompletionHandler` — independent of any specific data source.
+2.  **Repositories layer** (`repositories/`): thin wrappers around external APIs — `TodoistRepository`, `LLMRepository` (Nebius), `AnkiRepository` (AnkiConnect) — with retry logic via `tenacity`.
+3.  **Data sources layer** (`datasources/`): implementations of `SentenceSource` per input type — `TodoistSentenceSource`, `CsvSentenceSource`, `TextFileSentenceSource`.
+4.  **Service layer**: `llm_service.py`, `anki_service.py`, `word_processor.py` — business logic, injected with repositories rather than constructing them.
+5.  **Composition root**: `main.py` parses CLI args and wires the above together; `config.py` holds static config and secrets loaded from `.env`.
+6.  **Anki integration**: `anki_service.py` creates notes directly via AnkiConnect (no local `.apkg` packaging), with cloze-deletion and definition→word card templates, plus duplicate-note handling described below.
 
 ## Anki Tagging System
 
@@ -163,7 +175,7 @@ The application implements a flexible tagging system for Anki notes, combining t
 
 **Recommended Tag Structure:**
 
-*   **Time**: `Year::YYYY` (e.g., `Year::2026`) and `Month::::MM` (e.g., `Month::01`). These are automatically generated.
+*   **Time**: `Year::YYYY` (e.g., `Year::2026`), `Month::MM` (e.g., `Month::01`), and `InstructionLanguage::<Language>` (e.g., `InstructionLanguage::English`). These are all automatically generated.
 *   **Source Type**: `Type::Book`, `Type::News`, `Type::Podcast`, etc. (e.g., `Type::Book` from a CSV or text file, `Type::Todoist` for Todoist tasks).
 *   **Specific Source**: `Source::BookName`, `Source::NewspaperName`, `Source::PodcastName` (e.g., `Source::Harry_Potter`, `Source::New_Yorker`, `Source::NPR_Podcast`). This can be added via command-line arguments for batch processing.
 *   **Subject/Domain**: `Topic::Tech`, `Topic::Finance`, `Topic::Literature`, `Topic::History`, etc.
@@ -180,9 +192,9 @@ The application implements a flexible tagging system for Anki notes, combining t
 
 **Example Usage (Command Line):**
 ```bash
-python main.py --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
-python main.py --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
-python main.py --source csv --csv-file csv-files/book-project-hail-mari-until-page62.csv --tags "Source::Project_Hail_Mary,Topic::SciFi,Type::Book"
+python main.py --model openai/gpt-oss-120b --source csv --csv-file my_book.csv --tags "Source::MyBook,Topic::History,Type::Book"
+python main.py --model openai/gpt-oss-120b --source text_file --text-file my_sentences.txt --tags "Source::Article_Title,Topic::Science,Check"
+python main.py --model openai/gpt-oss-120b --source csv --csv-file csv-files/book-project-hail-mari-until-page62.csv --tags "Source::Project_Hail_Mary,Topic::SciFi,Type::Book"
 ```
 
 # Cron Job Setup Instructions
@@ -367,4 +379,4 @@ crontab -r
 
 2. **Multiple Environments**: If you have multiple Python projects, each should have its own bash script pointing to its own venv.
 
-3. **Backup Your Decks**: Consider setting up a separate cron job to backup your generated `.apkg` files periodically.
+3. **Backup Your Collection**: Notes are written straight into Anki via AnkiConnect (no intermediate export file), so back up your Anki collection itself (e.g. via Anki's built-in backups or exporting a deck package from within Anki) rather than looking for generated files in this project.

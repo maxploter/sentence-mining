@@ -77,16 +77,31 @@ The architecture has evolved to be highly modular and testable, employing a laye
     NEBIUS_API_KEY="YOUR_NEBIUS_API_KEY"
     ```
     To use a CSV source, pass `--source csv --csv-file <path>` at runtime (see below).
-    The `words.csv` file should have the following header and format:
+    `CsvSentenceSource` (`datasources/csv_source.py`) always skips the header row and infers columns from
+    count alone, so header text is a label only:
+
+    | Columns | Layout | Notes |
+    |---|---|---|
+    | 2 | `entry_text,sentence` | **Recommended** — this is the convention used by every file under `csv-files/`. Pass shared tags via `--tags` on the CLI. |
+    | 3 | `id,entry_text,sentence` | Adds a per-row id (logging only — CSV rows are never marked complete). |
+    | 4 | `id,entry_text,sentence,tags` | Adds a per-row tags column. **Must be quoted** if it holds more than one tag (`"Tag1,Tag2"`) — an unquoted multi-tag cell overflows into extra columns, and everything past the 4th column is silently dropped. |
+
+    2-column example (`word,context` header, though any header text works):
+    ```csv
+    word,context
+    apple,The apple fell from the tree.
+    horse sense,But also the horse sense to work things out on the fly.
+    ```
+    4-column example:
     ```csv
     id,entry_text,sentence,tags
     unique_id_1,your_word_or_phrase,The full sentence containing your word or phrase.,"Tag1,Source::BookTitle"
     unique_id_2,another_word,Another example sentence,Tag2
     ```
-    *   `id`: A unique identifier for the entry (e.g., a number, a UUID).
-    *   `entry_text`: The text from which the word to be learned will be extracted (e.g., "apple", "english headspace").
-    *   `sentence`: The full sentence context for the word.
-    * `tags` (Optional): A comma-separated string of tags to be added to the Anki note.
+    *   `id`: A unique identifier for the entry (e.g., a number, a UUID). Optional (2-column form omits it).
+    *   `entry_text`: The text from which the word to be learned will be extracted (e.g., "apple", "horse sense"). Multi-word phrases and idioms need no special syntax — the full text is used verbatim.
+    *   `sentence`: The full sentence context for the word. Quote it if it contains a comma.
+    *   `tags` (Optional, 4-column form only): A comma-separated string of tags to be added to the Anki note. Must be quoted if it contains more than one tag.
 
 6.  **Run the Script:**
     Make sure Anki is open and running on your machine, then execute:
